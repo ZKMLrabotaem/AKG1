@@ -72,7 +72,7 @@ namespace lab1.MatrixOperations
         {
             Vector3 ZAxis = (eye - target).Normalize();
             Vector3 XAxis = Vector3.VectorMultiplication(up, ZAxis).Normalize();
-            Vector3 YAxis = up;
+            Vector3 YAxis = Vector3.VectorMultiplication(ZAxis, XAxis);
 
             float[,] watcherMatrix = {
                 { XAxis.X, XAxis.Y, XAxis.Z, -Vector3.ScalarMultiplication(XAxis, eye) },

@@ -53,8 +53,7 @@
             KeyPreview = true;
             Name = "Scene";
             Text = "Scene";
-            WindowState = FormWindowState.Maximized;
-        
+            Resize += Scene_Resize;
             ((System.ComponentModel.ISupportInitialize)pictureBox1).EndInit();
             ResumeLayout(false);
         }

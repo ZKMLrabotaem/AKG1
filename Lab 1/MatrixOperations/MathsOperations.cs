@@ -33,7 +33,7 @@ namespace lab1.MatrixOperations
             result[1] = transformationMatrix[1, 0] * vertex.X + transformationMatrix[1, 1] * vertex.Y + transformationMatrix[1, 2] * vertex.Z + transformationMatrix[1, 3];
             result[2] = transformationMatrix[2, 0] * vertex.X + transformationMatrix[2, 1] * vertex.Y + transformationMatrix[2, 2] * vertex.Z + transformationMatrix[2, 3];
             result[3] = transformationMatrix[3, 0] * vertex.X + transformationMatrix[3, 1] * vertex.Y + transformationMatrix[3, 2] * vertex.Z + transformationMatrix[3, 3];
-            return new Vector3(result[0], result[1], result[2]);
+            return new Vector3(result[0], result[1], result[2], result[3]);
         }
     }
 

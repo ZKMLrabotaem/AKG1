@@ -22,9 +22,10 @@ namespace lab1.Forms
         private float rotationX = 0;
         private float rotationY = 0;
         private float rotationZ = 0;
-        private float scale = 5;
+        //private float scale = 0.05f;
+        private float scale = 1f;
         private float translationX = 0;
-        private float translationY = -3.5f;
+        private float translationY = 0;
         private float translationZ = 0;
 
         private float[,] rotateXMatrix;
@@ -39,7 +40,7 @@ namespace lab1.Forms
 
         private const float rotationSpeed = 0.1f;
         private const float translationSpeed = 0.3f;
-        private const float speed = 0.5f;
+        private const float speed = 0.005f;
         private System.Windows.Forms.Timer movementTimer;
 
         private const string city = "Objects\\Castelia City.obj";
@@ -47,14 +48,17 @@ namespace lab1.Forms
         private const string plant = "Objects\\plant.obj";
         private const string cooler = "Objects\\cooler.obj";
         private const string shark = "Objects\\shark.obj";
+        private const string car = "Objects\\car.obj";
         private HashSet<Keys> pressedKeys = new HashSet<Keys>();
+
+        Bitmap bitmap;
 
         private int objectMode = 1;
 
         public Scene()
         {
             InitializeComponent();
-            obj = new ObjModel(plant);
+            obj = new ObjModel(car);
             this.KeyDown += Scene_KeyDown;
             this.KeyUp += Scene_KeyUp;
             movementTimer = new System.Windows.Forms.Timer();
@@ -66,9 +70,8 @@ namespace lab1.Forms
             scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale);
             translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ);
             update();
-        }
 
-        
+        }
         private void Scene_KeyDown(object sender, KeyEventArgs e)
         {
             if (!pressedKeys.Contains(e.KeyCode))
@@ -94,6 +97,7 @@ namespace lab1.Forms
                 movementTimer.Stop();
             }
         }
+
         private void MovementTimer_Tick(object sender, EventArgs e)
         {
             foreach (var key in pressedKeys)
@@ -102,7 +106,6 @@ namespace lab1.Forms
             }
             update();
         }
-
 
         protected override void OnMouseWheel(MouseEventArgs e)
         {
@@ -132,12 +135,7 @@ namespace lab1.Forms
 
         protected void update()
         {
-
-            Bitmap bitmap = new Bitmap(this.Width, this.Height);
-
-
-            bitmap = new Bitmap(ClientSize.Width, ClientSize.Height, PixelFormat.Format24bppRgb);
-
+            bitmap = new Bitmap(pictureBox1.Width, pictureBox1.Height, PixelFormat.Format24bppRgb);
 
             // Model
             // rotateZMatrx * rotateYMatrix * rotateXMatrix * scaleMatrix * translationMatrix
@@ -159,11 +157,12 @@ namespace lab1.Forms
             float[,] observerMatrix = Matricies.GetObserverMatrix(eye, target, up);
 
             // Projection
-            //(800f/600f*0.2f, 0.2f, 0.1f, 100)
-            float[,] projectionMatrix = Matricies.GetPerspectiveProjectionMatrix(90, 800f / 600f, 1, 1000);
+            //float[,] projectionMatrix = Matricies.GetPerspectiveProjectionMatrix(800f / 600f * 0.2f, 0.2f, 0.1f, 100);
+            //(90, 800f / 600f, 1, 1000)
+            float[,] projectionMatrix = Matricies.GetPerspectiveProjectionMatrix(float.Pi / 2f, bitmap.Width / (float)bitmap.Height, 1, 1000);
 
             // Viewport
-            float[,] viewportMatrix = Matricies.GetViewingWindowMatrix(800, 600, -400, -300);
+            float[,] viewportMatrix = Matricies.GetViewingWindowMatrix(bitmap.Width, (float)bitmap.Height, 0, 0);
 
             var resultMatrix = MathsOperations.MultipleMatrix(
                 MathsOperations.MultipleMatrix(
@@ -189,10 +188,7 @@ namespace lab1.Forms
                     v1 = new Vector3(v1.X / v1.W, v1.Y / v1.W, v1.Z / v1.W, 1);
                     v2 = new Vector3(v2.X / v2.W, v2.Y / v2.W, v2.Z / v2.W, 1);
 
-                    System.Drawing.Point p1 = Project(v1);
-                    System.Drawing.Point p2 = Project(v2);
-
-                    DrawLine(bitmap, p1, p2);
+                    DrawLine(bitmap, v1, v2);
                 }
             }
             pictureBox1.Image = bitmap;
@@ -211,70 +207,13 @@ namespace lab1.Forms
                 int bytes = bmpData.Stride * bitmap.Height;
 
                 for (int i = 0; i < bytes; i++)
-                    ptr[i] = 200; 
+                    ptr[i] = 200;
             }
 
             bitmap.UnlockBits(bmpData);
         }
 
-        private System.Drawing.Point Project(Vector3 v)
-        {
-            float scale = 500 / (500 + v.Z);
-            float x = v.X / v.W;
-            float y = v.Y / v.W;
-
-            int px = (int)(x * scale + this.ClientSize.Width / 2);
-            int py = (int)(y * scale + this.ClientSize.Height / 2);
-
-            return new System.Drawing.Point(px, py);
-        }
-
-
-        /*private void DrawLine(Graphics g, PointF p1, PointF p2)
-        {
-            using (Pen pen = new Pen(Color.White))
-            {
-                g.DrawLine(pen, p1, p2);
-            }
-        }*/
-
-        /*private void DrawLine(Graphics g, PointF p1, PointF p2)
-        {
-            int x1 = (int)p1.X;
-            int y1 = (int)p1.Y;
-            int x2 = (int)p2.X;
-            int y2 = (int)p2.Y;
-
-            int dx = Math.Abs(x2 - x1);
-            int dy = Math.Abs(y2 - y1);
-            int sx = (x1 < x2) ? 1 : -1;
-            int sy = (y1 < y2) ? 1 : -1; 
-            int err = dx - dy; 
-
-            while (true)
-            {
-                g.FillRectangle(Brushes.White, x1, y1, 1, 1); 
-
-                if (x1  >= 0 && x1 < Width && y1 >= 0 && y1 < Height)
-                bmp.SetPixel(x1, y1, Color.White);
-
-                if (x1 == x2 && y1 == y2) break;
-
-                int err2 = err * 2;
-
-                if (err2 > -dy)
-                {
-                    err -= dy;
-                    x1 += sx;
-                }
-                if (err2 < dx)
-                {
-                    err += dx;
-                    y1 += sy;
-                }
-            }
-        }*/
-        private void DrawLine(Bitmap bitmap, System.Drawing.Point p1, System.Drawing.Point p2)
+        private void DrawLine(Bitmap bitmap, Vector3 p1, Vector3 p2)
         {
             BitmapData bmpData = bitmap.LockBits(
                 new Rectangle(0, 0, bitmap.Width, bitmap.Height),
@@ -285,8 +224,8 @@ namespace lab1.Forms
             {
                 byte* ptr = (byte*)bmpData.Scan0;
                 int stride = bmpData.Stride;
-                int x1 = p1.X, y1 = p1.Y;
-                int x2 = p2.X, y2 = p2.Y;
+                int x1 = (int)p1.X, y1 = (int)p1.Y;
+                int x2 = (int)p2.X, y2 = (int)p2.Y;
                 int dx = Math.Abs(x2 - x1);
                 int dy = Math.Abs(y2 - y1);
                 int sx = (x1 < x2) ? 1 : -1;
@@ -313,7 +252,6 @@ namespace lab1.Forms
 
             bitmap.UnlockBits(bmpData);
         }
-
 
         private void DrawAxes(Graphics g)
         {
@@ -350,74 +288,78 @@ namespace lab1.Forms
         }
 
         private void HandleKeyPress(Keys key)
-{
-    switch (key)
-    {
-        // Переключение режима
-        case Keys.C:
-            objectMode *= -1;
-            break;
+        {
+            switch (key)
+            {
+                // Повороты
+                case Keys.A:
+                    rotationY -= rotationSpeed * objectMode;
+                    rotateYMatrix = Matricies.GetRotateYMatrix(rotationY);
+                    break;
 
-        // Повороты
-        case Keys.A:
-            rotationY -= rotationSpeed * objectMode;
-            rotateYMatrix = Matricies.GetRotateYMatrix(rotationY);
-            break;
+                case Keys.D:
+                    rotationY += rotationSpeed * objectMode;
+                    rotateYMatrix = Matricies.GetRotateYMatrix(rotationY);
+                    break;
 
-        case Keys.D:
-            rotationY += rotationSpeed * objectMode;
-            rotateYMatrix = Matricies.GetRotateYMatrix(rotationY);
-            break;
+                case Keys.W:
+                    rotationX -= rotationSpeed * objectMode;
+                    rotateXMatrix = Matricies.GetRotateXMatrix(rotationX);
+                    break;
 
-        case Keys.W:
-            rotationX -= rotationSpeed * objectMode;
-            rotateXMatrix = Matricies.GetRotateXMatrix(rotationX);
-            break;
+                case Keys.S:
+                    rotationX += rotationSpeed * objectMode;
+                    rotateXMatrix = Matricies.GetRotateXMatrix(rotationX);
+                    break;
 
-        case Keys.S:
-            rotationX += rotationSpeed * objectMode;
-            rotateXMatrix = Matricies.GetRotateXMatrix(rotationX);
-            break;
+                case Keys.Q:
+                    rotationZ += rotationSpeed * objectMode;
+                    rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
+                    break;
 
-        case Keys.Q:
-            rotationZ += rotationSpeed * objectMode;
-            rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
-            break;
+                case Keys.E:
+                    rotationZ -= rotationSpeed * objectMode;
+                    rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
+                    break;
 
-        case Keys.E:
-            rotationZ -= rotationSpeed * objectMode;
-            rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
-            break;
+                // Перемещения
+                case Keys.Up:
+                    translationY += translationSpeed * objectMode;
+                    break;
 
-        // Перемещения
-        case Keys.Up:
-            translationY += translationSpeed * objectMode;
-            break;
+                case Keys.Down:
+                    translationY -= translationSpeed * objectMode;
+                    break;
 
-        case Keys.Down:
-            translationY -= translationSpeed * objectMode;
-            break;
+                case Keys.Left:
+                    if (!pressedKeys.Contains(Keys.Control))
+                        translationX -= translationSpeed * objectMode;
+                    else
+                        translationZ -= translationSpeed * objectMode;
+                    break;
 
-        case Keys.Left:
-            if (!pressedKeys.Contains(Keys.Control))
-                translationX -= translationSpeed * objectMode;
-            else
-                translationZ -= translationSpeed * objectMode;
-            break;
+                case Keys.Right:
+                    if (!pressedKeys.Contains(Keys.Control))
+                        translationX += translationSpeed * objectMode;
+                    else
+                        translationZ += translationSpeed * objectMode;
+                    break;
+            }
 
-        case Keys.Right:
-            if (!pressedKeys.Contains(Keys.Control))
-                translationX += translationSpeed * objectMode;
-            else
-                translationZ += translationSpeed * objectMode;
-            break;
-    }
+            // Пересчитываем матрицы трансформации
+            translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ);
 
-    // Пересчитываем матрицы трансформации
-    translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ);
+            update();
+        }
 
-    update();
-}
+        private void pictureBox1_Resize(object sender, EventArgs e)
+        {
+            update();
+        }
 
+        private void Scene_Resize(object sender, EventArgs e)
+        {
+            update();
+        }
     }
 }
