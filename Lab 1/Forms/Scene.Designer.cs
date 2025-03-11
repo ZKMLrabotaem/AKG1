@@ -34,7 +34,7 @@
             // 
             // pictureBox1
             // 
-            pictureBox1.BackColor = SystemColors.ActiveCaptionText;
+            pictureBox1.BackColor = SystemColors.ButtonHighlight;
             pictureBox1.Dock = DockStyle.Fill;
             pictureBox1.Location = new Point(0, 0);
             pictureBox1.Name = "pictureBox1";
@@ -50,6 +50,7 @@
             ClientSize = new Size(1615, 1061);
             Controls.Add(pictureBox1);
             DoubleBuffered = true;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
             KeyPreview = true;
             Name = "Scene";
             Text = "Scene";
