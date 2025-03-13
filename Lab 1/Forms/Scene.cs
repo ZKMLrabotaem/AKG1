@@ -53,6 +53,7 @@ namespace lab1.Forms
         private const string cooler = "Objects\\cooler.obj";
         private const string shark = "Objects\\shark.obj";
         private const string car = "Objects\\car.obj";
+        private const string eyeball = "Objects\\eyeball.obj";
         private HashSet<Keys> pressedKeys = new HashSet<Keys>();
 
         private float[,] zBuffer;
@@ -64,7 +65,7 @@ namespace lab1.Forms
         public Scene()
         {
             InitializeComponent();
-            obj = new ObjModel(car);
+            obj = new ObjModel(eyeball);
             this.KeyDown += Scene_KeyDown;
             this.KeyUp += Scene_KeyUp;
             movementTimer = new System.Windows.Forms.Timer();
@@ -320,25 +321,30 @@ namespace lab1.Forms
                 float x_start = Math.Min(x1, x2);
                 float x_end = Math.Max(x1, x2);
 
-                //DrawLine(bitmap, new Vector3(x_start, y, 0), new Vector3(x_end, y, 0), color);
-                //////
+           
+                x_start = Math.Max(0, x_start);
+                x_end = Math.Min(bitmap.Width - 1, x_end);
+
                 bool flag = false;
                 int xStart = 0;
                 int xEnd = 0;
+
                 for (int x = (int)float.Ceiling(x_start); x <= x_end; x++)
                 {
+              
+                    if (x < 0 || x >= bitmap.Width || y < 0 || y >= bitmap.Height) continue;
+
                     float z = InterpolateZ(v0, v1, v2, x, y);
                     if (z < zBuffer[x, y])
                     {
                         zBuffer[x, y] = z;
-                        //bitmap.SetPixel(x, y, color);
 
                         if (!flag)
                         {
                             xStart = x;
                             flag = true;
                         }
-                        
+
                         if (x + 1 > x_end)
                         {
                             xEnd = x;
@@ -355,9 +361,9 @@ namespace lab1.Forms
                         }
                     }
                 }
-                /////
             }
         }
+
 
         private float InterpolateX(Vector3 a, Vector3 b, float y)
         {
@@ -397,7 +403,7 @@ namespace lab1.Forms
 
         private float CalculateLambertIntensity(Vector3 normal)
         {
-            float cosTheta = Math.Max(Vector3.ScalarMultiplication(normal, lightDirection), 0.4f);
+             float cosTheta = Math.Max(Vector3.ScalarMultiplication(normal, lightDirection), 0.001f);
             cosTheta = Math.Min(cosTheta, 1);
             return cosTheta;
         }

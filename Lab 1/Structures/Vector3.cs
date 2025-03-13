@@ -50,4 +50,19 @@
             return this * (1.0f / length);
         return this;
     }
+    public static Vector3 Normalize(Vector3 v)
+    {
+        return v.Normalize();
+    }
+
+  
+    public static Vector3[] Normalize(params Vector3[] vectors)
+    {
+        Vector3[] normalizedVectors = new Vector3[vectors.Length];
+        for (int i = 0; i < vectors.Length; i++)
+        {
+            normalizedVectors[i] = vectors[i].Normalize();
+        }
+        return normalizedVectors;
+    }
 }
