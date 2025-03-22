@@ -8,8 +8,8 @@ namespace lab1.Structures
 {
     public struct Face
     {
-        public int[,] VertexIndices { get; }
-        public Face(int[,] vertexIndices)
+        public int[] VertexIndices { get; }
+        public Face(int[] vertexIndices)
         {
             VertexIndices = vertexIndices;
         }

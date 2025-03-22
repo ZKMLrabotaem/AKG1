@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.DirectoryServices.ActiveDirectory;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -31,16 +32,13 @@ namespace lab1.Forms
         private float translationY = 0;
         private float translationZ = 0;
 
-        private float[,] rotateXMatrix;
-        private float[,] rotateYMatrix;
-        private float[,] rotateZMatrix;
-        private float[,] scaleMatrix;
-        private float[,] translationMatrix;
+        private float[,] rotateXMatrix, rotateYMatrix, rotateZMatrix, scaleMatrix, translationMatrix;
+        private float[,] modelMatrix, observerMatrix, projectionMatrix, viewportMatrix, resultMatrix;
 
         private Vector3 eye = new Vector3(0, 0, 5);
         private Vector3 target = new Vector3(0, 0, 0);
         private Vector3 up = new Vector3(0, 1, 0);
-        private Vector3 lightDirection = new Vector3(0, -1, 0);
+        private Vector3 lightDirection = new Vector3(-1, -1, -1).Normalize();
 
         private const float rotationSpeed = 0.1f;
         private const float translationSpeed = 0.3f;
@@ -54,18 +52,28 @@ namespace lab1.Forms
         private const string shark = "Objects\\shark.obj";
         private const string car = "Objects\\car.obj";
         private const string eyeball = "Objects\\eyeball.obj";
+        private const string church = "Objects\\church_of_st._tiss.obj";
         private HashSet<Keys> pressedKeys = new HashSet<Keys>();
 
         private float[,] zBuffer;
 
         Bitmap bitmap;
 
+        Vector3[] verticesInViewport = new Vector3[3];
+        Vector3[] verticecInWorld = new Vector3[3];
+        Vector3 v;
+        Vector3 u;
+        Vector3 normal;
+        Vector3 color;
+        int vIndex;
+        float intensity;
+
         private int objectMode = 1;
 
         public Scene()
         {
             InitializeComponent();
-            obj = new ObjModel(eyeball);
+            obj = new ObjModel(car);
             this.KeyDown += Scene_KeyDown;
             this.KeyUp += Scene_KeyUp;
             movementTimer = new System.Windows.Forms.Timer();
@@ -76,6 +84,8 @@ namespace lab1.Forms
             rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
             scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale);
             translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ);
+            lightDirection = lightDirection * -1;
+
             update();
         }
         private void Scene_KeyDown(object sender, KeyEventArgs e)
@@ -106,9 +116,10 @@ namespace lab1.Forms
 
         private void MovementTimer_Tick(object sender, EventArgs e)
         {
+            bool isCtrlPressed = (Control.ModifierKeys & Keys.Control) == Keys.Control;
             foreach (var key in pressedKeys)
             {
-                HandleKeyPress(key);
+                HandleKeyPress(key, isCtrlPressed);
             }
             update();
         }
@@ -147,7 +158,7 @@ namespace lab1.Forms
 
             // Model
             // rotateZMatrx * rotateYMatrix * rotateXMatrix * scaleMatrix * translationMatrix
-            float[,] modelMatrix = MathsOperations.MultipleMatrix(
+            modelMatrix = MathsOperations.MultipleMatrix(
                 MathsOperations.MultipleMatrix(
                     MathsOperations.MultipleMatrix(
                         MathsOperations.MultipleMatrix(
@@ -162,17 +173,15 @@ namespace lab1.Forms
                 );
 
             // View
-            float[,] observerMatrix = Matricies.GetObserverMatrix(eye, target, up);
+            observerMatrix = Matricies.GetObserverMatrix(eye, target, up);
 
             // Projection
-            //float[,] projectionMatrix = Matricies.GetPerspectiveProjectionMatrix(800f / 600f * 0.2f, 0.2f, 0.1f, 100);
-            //(90, 800f / 600f, 1, 1000)
-            float[,] projectionMatrix = Matricies.GetPerspectiveProjectionMatrix(float.Pi / 2f, bitmap.Width / (float)bitmap.Height, 1, 1000);
+            projectionMatrix = Matricies.GetPerspectiveProjectionMatrix(float.Pi / 2f, bitmap.Width / (float)bitmap.Height, 1, 1000);
 
             // Viewport
-            float[,] viewportMatrix = Matricies.GetViewingWindowMatrix(bitmap.Width, (float)bitmap.Height, 0, 0);
+            viewportMatrix = Matricies.GetViewingWindowMatrix(bitmap.Width, (float)bitmap.Height, 0, 0);
 
-            var resultMatrix = MathsOperations.MultipleMatrix(
+            resultMatrix = MathsOperations.MultipleMatrix(
                 MathsOperations.MultipleMatrix(
                     MathsOperations.MultipleMatrix(
                         viewportMatrix,
@@ -183,34 +192,38 @@ namespace lab1.Forms
                 modelMatrix
                 );
 
-            // Отрисовка поверхностей
-            foreach (var face in obj.Faces)
+            int count = obj.faces.Length / 3;
+            for (int i = 0; i < count; i++)
             {
-                int[] coords = { 0, 1, 2 };
-                for (int i = 0; i < face.VertexIndices.GetLength(0) - 2; i++)
+                for (int j = 0; j < 3; j++)
                 {
-                    Vector3[] vertices = new Vector3[3];
+                    vIndex = obj.faces[i * 3 + j] - 1;
+                    v = MathsOperations.TransformVertex(obj.Vertices[vIndex], resultMatrix);
 
-                    for (int j = 0; j < 3; j++)
-                    {
-                        int vIndex = face.VertexIndices[coords[j], 0] - 1;
-                        Vector3 v = MathsOperations.TransformVertex(obj.Vertices[vIndex], resultMatrix);
-                        vertices[j] = new Vector3(v.X / v.W, v.Y / v.W, v.Z / v.W, 1);
-                    }
+                    verticesInViewport[j].X = v.X / v.W;
+                    verticesInViewport[j].Y = v.Y / v.W;
+                    verticesInViewport[j].Z = v.Z / v.W;
 
-                    Vector3 normal = CalculateFaceNormal(vertices, face);
-                    //if (Vector3.ScalarMultiplication(normal, viewDirection) < 0) continue;
-
-                    float intensity = CalculateLambertIntensity(normal);
-                    Color color = ApplyIntensityToColor(intensity);
-
-                    RasterizeTriangle(bitmap, vertices[0], vertices[1], vertices[2], color);
-                    coords[1]++;
-                    coords[2]++;
+                    u = MathsOperations.TransformVertex(obj.Vertices[vIndex], modelMatrix);
+                    verticecInWorld[j].X = u.X;
+                    verticecInWorld[j].Y = u.Y;
+                    verticecInWorld[j].Z = u.Z;
                 }
+
+                normal = CalculateFaceNormal(verticecInWorld);
+
+                if (Vector3.ScalarMultiplication(normal, (target - eye).Normalize()) > 0) continue;
+
+                intensity = CalculateLambertIntensity(normal);
+                /*color = new Vector3((byte)((normal.X + 1) * 0.5f * 255),
+                                       (byte)((normal.Y + 1) * 0.5f * 255),
+                                       (byte)((normal.Z + 1) * 0.5f * 255));*/
+                color = ApplyIntensityToColor(intensity);
+
+                RasterizeTriangle(bitmap, verticesInViewport[0], verticesInViewport[1], verticesInViewport[2], color);
             }
 
-            // Отрисовка граней
+            // Отрисовка ребер
             /*foreach (var face in obj.Faces)
             {
                 for (int i = 0; i < face.VertexIndices.GetLength(0); i++)
@@ -249,7 +262,7 @@ namespace lab1.Forms
             bitmap.UnlockBits(bmpData);
         }
 
-        private void DrawLine(Bitmap bitmap, Vector3 p1, Vector3 p2, Color clr)
+        private void DrawLine(Bitmap bitmap, Vector3 p1, Vector3 p2, Vector3 clr)
         {
             BitmapData bmpData = bitmap.LockBits(
                 new Rectangle(0, 0, bitmap.Width, bitmap.Height),
@@ -273,9 +286,9 @@ namespace lab1.Forms
                     if (x1 >= 0 && x1 < bitmap.Width && y1 >= 0 && y1 < bitmap.Height)
                     {
                         byte* pixel = ptr + y1 * stride + x1 * 3;
-                        pixel[0] = clr.B;
-                        pixel[1] = clr.G;
-                        pixel[2] = clr.R;
+                        pixel[0] = (byte)clr.Z;
+                        pixel[1] = (byte)clr.Y;
+                        pixel[2] = (byte)clr.X;
                     }
 
                     if (x1 == x2 && y1 == y2) break;
@@ -289,7 +302,7 @@ namespace lab1.Forms
             bitmap.UnlockBits(bmpData);
         }
 
-        public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2, Color color)
+        public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 color)
         {
             Vector3[] vertices = new Vector3[] { v0, v1, v2 };
             Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
@@ -298,15 +311,14 @@ namespace lab1.Forms
             Vector3 middle = vertices[1];
             Vector3 bottom = vertices[2];
 
-            int yStart = (int)Math.Ceiling(top.Y);
-            int yEnd = (int)Math.Floor(bottom.Y);
+            int yStart = Math.Max(0, (int)Math.Ceiling(top.Y));
+            int yEnd = Math.Min(bitmap.Height - 1, (int)Math.Floor(bottom.Y));
 
             for (int y = yStart; y <= yEnd; y++)
             {
-                if (y < 0 || y >= bitmap.Height) continue;
-
                 float x1, x2;
 
+                // Определяем x1 и x2 в зависимости от позиции y
                 if (y < middle.Y)
                 {
                     x1 = InterpolateX(top, middle, y);
@@ -318,52 +330,122 @@ namespace lab1.Forms
                     x2 = InterpolateX(top, bottom, y);
                 }
 
-                float x_start = Math.Min(x1, x2);
-                float x_end = Math.Max(x1, x2);
+                int xStart = (int)Math.Max(0, Math.Ceiling(Math.Min(x1, x2)));
+                int xEnd = (int)Math.Min(bitmap.Width - 1, Math.Floor(Math.Max(x1, x2)));
 
-           
-                x_start = Math.Max(0, x_start);
-                x_end = Math.Min(bitmap.Width - 1, x_end);
+                if (xStart > xEnd) continue;
 
                 bool flag = false;
-                int xStart = 0;
-                int xEnd = 0;
+                int lastXStart = 0;
 
-                for (int x = (int)float.Ceiling(x_start); x <= x_end; x++)
+                for (int x = xStart; x <= xEnd; x++)
                 {
-              
-                    if (x < 0 || x >= bitmap.Width || y < 0 || y >= bitmap.Height) continue;
-
                     float z = InterpolateZ(v0, v1, v2, x, y);
+
+                    // Проверка глубины
                     if (z < zBuffer[x, y])
                     {
                         zBuffer[x, y] = z;
 
                         if (!flag)
                         {
-                            xStart = x;
+                            lastXStart = x;
                             flag = true;
                         }
-
-                        if (x + 1 > x_end)
-                        {
-                            xEnd = x;
-                            DrawLine(bitmap, new Vector3(xStart, y, 0), new Vector3(xEnd, y, 0), color);
-                        }
                     }
-                    else
+                    else if (flag)
                     {
-                        if (flag)
-                        {
-                            xEnd = x - 1;
-                            DrawLine(bitmap, new Vector3(xStart, y, 0), new Vector3(xEnd, y, 0), color);
-                            flag = false;
-                        }
+                        // Рисуем линию только если она была начата
+                        DrawLine(bitmap, new Vector3(lastXStart, y, 0), new Vector3(x - 1, y, 0), color);
+                        flag = false;
                     }
+                }
+
+                // Если линия была открыта до конца строки
+                if (flag)
+                {
+                    DrawLine(bitmap, new Vector3(lastXStart, y, 0), new Vector3(xEnd, y, 0), color);
                 }
             }
         }
 
+
+        /*
+         public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 color)
+{
+    Vector3[] vertices = new Vector3[] { v0, v1, v2 };
+    Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
+
+    Vector3 top = vertices[0];
+    Vector3 middle = vertices[1];
+    Vector3 bottom = vertices[2];
+
+    int yStart = (int)Math.Ceiling(top.Y);
+    int yEnd = (int)Math.Floor(bottom.Y);
+
+    for (int y = yStart; y <= yEnd; y++)
+    {
+        if (y < 0  y >= bitmap.Height) continue;
+
+        float x1, x2;
+
+        if (y < middle.Y)
+        {
+            x1 = InterpolateX(top, middle, y);
+            x2 = InterpolateX(top, bottom, y);
+        }
+        else
+        {
+            x1 = InterpolateX(middle, bottom, y);
+            x2 = InterpolateX(top, bottom, y);
+        }
+
+        float x_start = Math.Min(x1, x2);
+        float x_end = Math.Max(x1, x2);
+
+   
+        x_start = Math.Max(0, x_start);
+        x_end = Math.Min(bitmap.Width - 1, x_end);
+
+        bool flag = false;
+        int xStart = 0;
+        int xEnd = 0;
+
+        for (int x = (int)float.Ceiling(x_start); x <= x_end; x++)
+        {
+      
+            if (x < 0  x >= bitmap.Width  y < 0  y >= bitmap.Height) continue;
+
+            float z = InterpolateZ(v0, v1, v2, x, y);
+            if (z < zBuffer[x, y])
+            {
+                zBuffer[x, y] = z;
+
+                if (!flag)
+                {
+                    xStart = x;
+                    flag = true;
+                }
+
+                if (x + 1 > x_end)
+                {
+                    xEnd = x;
+                    DrawLine(bitmap, new Vector3(xStart, y, 0), new Vector3(xEnd, y, 0), color);
+                }
+            }
+            else
+            {
+                if (flag)
+                {
+                    xEnd = x - 1;
+                    DrawLine(bitmap, new Vector3(xStart, y, 0), new Vector3(xEnd, y, 0), color);
+                    flag = false;
+                }
+            }
+        }
+    }
+}
+         */
 
         private float InterpolateX(Vector3 a, Vector3 b, float y)
         {
@@ -391,32 +473,30 @@ namespace lab1.Forms
                     zBuffer[x, y] = float.MaxValue;
         }
 
-        private Vector3 CalculateFaceNormal(Vector3[] v, Face face)
+        private Vector3 CalculateFaceNormal(Vector3[] v)
         {
-            Vector3 edge1 = v[1] - v[0];
-            Vector3 edge2 = v[2] - v[0];
-
-            Vector3 normal = Vector3.VectorMultiplication(edge1, edge2);
-            normal.Normalize();
-            return normal;
+            return Vector3.VectorMultiplication(v[1] - v[0], v[2] - v[0]).Normalize();
         }
 
         private float CalculateLambertIntensity(Vector3 normal)
         {
-             float cosTheta = Math.Max(Vector3.ScalarMultiplication(normal, lightDirection), 0.001f);
+            float cosTheta = Math.Max(Vector3.ScalarMultiplication(normal, lightDirection), 0.05f);
             cosTheta = Math.Min(cosTheta, 1);
             return cosTheta;
         }
 
-        private Color ApplyIntensityToColor(float intensity)
+        private Vector3 ApplyIntensityToColor(float intensity)
         {
-            int r = (int)(255 * intensity);
+            /*int r = (int)(255 * intensity);
             int g = (int)(255 * intensity);
             int b = (int)(255 * intensity);
-            return Color.FromArgb(r, g, b);
+            return Color.FromArgb(r, g, b);*/
+
+            byte intensityByte = (byte)(255 * intensity);
+            return new Vector3(intensityByte, intensityByte, intensityByte);
         }
 
-        private void HandleKeyPress(Keys key)
+        private void HandleKeyPress(Keys key, bool isControlPressed)
         {
             switch (key)
             {
@@ -461,14 +541,14 @@ namespace lab1.Forms
                     break;
 
                 case Keys.Left:
-                    if (!pressedKeys.Contains(Keys.Control))
+                    if (!isControlPressed)
                         translationX -= translationSpeed * objectMode;
                     else
                         translationZ -= translationSpeed * objectMode;
                     break;
 
                 case Keys.Right:
-                    if (!pressedKeys.Contains(Keys.Control))
+                    if (!isControlPressed)
                         translationX += translationSpeed * objectMode;
                     else
                         translationZ += translationSpeed * objectMode;
@@ -487,13 +567,3 @@ namespace lab1.Forms
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
