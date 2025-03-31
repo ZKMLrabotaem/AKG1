@@ -69,6 +69,13 @@ namespace lab1.Forms
         float intensity;
 
         private int objectMode = 1;
+        public enum LightingMode
+        {
+            Lambert,
+            Phong
+        }
+
+        public LightingMode CurrentLightingMode { get; set; } = LightingMode.Lambert;
 
         public Scene()
         {
@@ -99,6 +106,12 @@ namespace lab1.Forms
             {
                 movementTimer.Start();
             }
+            if (e.KeyCode == Keys.L)
+            {
+                CurrentLightingMode = CurrentLightingMode == LightingMode.Lambert ? LightingMode.Phong : LightingMode.Lambert;
+                update();
+            }
+
         }
 
         private void Scene_KeyUp(object sender, KeyEventArgs e)
@@ -214,10 +227,15 @@ namespace lab1.Forms
 
                 if (Vector3.ScalarMultiplication(normal, (target - eye).Normalize()) > 0) continue;
 
-                intensity = CalculateLambertIntensity(normal);
-                /*color = new Vector3((byte)((normal.X + 1) * 0.5f * 255),
-                                       (byte)((normal.Y + 1) * 0.5f * 255),
-                                       (byte)((normal.Z + 1) * 0.5f * 255));*/
+                if (CurrentLightingMode == LightingMode.Lambert)
+                {
+                    intensity = CalculateLambertIntensity(normal);
+                }
+                else if (CurrentLightingMode == LightingMode.Phong)
+                {
+                    intensity = CalculatePhongIntensity(normal, verticecInWorld[0]);
+                }
+
                 color = ApplyIntensityToColor(intensity);
 
                 RasterizeTriangle(bitmap, verticesInViewport[0], verticesInViewport[1], verticesInViewport[2], color);
@@ -484,6 +502,24 @@ namespace lab1.Forms
             cosTheta = Math.Min(cosTheta, 1);
             return cosTheta;
         }
+        private float CalculatePhongIntensity(Vector3 normal, Vector3 fragmentPosition)
+        {
+            float ambientCoefficient = 0.1f; 
+            float diffuseCoefficient = 0.7f; 
+            float specularCoefficient = 0.2f; 
+            int shininess = 32;                
+
+            Vector3 viewDirection = (eye - fragmentPosition).Normalize();
+            Vector3 reflectionDirection = (normal * 2 * Vector3.ScalarMultiplication(lightDirection, normal) - lightDirection).Normalize();
+
+            float ambient = ambientCoefficient;
+
+            float diffuse = Math.Max(0, Vector3.ScalarMultiplication(normal, lightDirection)) * diffuseCoefficient;
+
+            float specular = (float)Math.Pow(Math.Max(0, Vector3.ScalarMultiplication(viewDirection, reflectionDirection)), shininess) * specularCoefficient;
+
+            return Math.Clamp(ambient + diffuse + specular, 0f, 1f);
+        }
 
         private Vector3 ApplyIntensityToColor(float intensity)
         {
@@ -553,6 +589,7 @@ namespace lab1.Forms
                     else
                         translationZ += translationSpeed * objectMode;
                     break;
+
             }
 
             // Пересчитываем матрицы трансформации
