@@ -9,9 +9,11 @@ namespace lab1.Structures
     public struct Face
     {
         public int[] VertexIndices { get; }
-        public Face(int[] vertexIndices)
+        public int[] NormalsIndices { get; }
+        public Face(int[] vertexIndices, int[] normalsIndices)
         {
             VertexIndices = vertexIndices;
+            NormalsIndices = normalsIndices;
         }
     }
 }

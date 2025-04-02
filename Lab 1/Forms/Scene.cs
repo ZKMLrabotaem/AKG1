@@ -8,6 +8,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -61,11 +62,11 @@ namespace lab1.Forms
 
         Vector3[] verticesInViewport = new Vector3[3];
         Vector3[] verticecInWorld = new Vector3[3];
-        Vector3 v;
-        Vector3 u;
+        Vector3[] verticiesNormals = new Vector3[3];
+        Vector3 v, u, n;
         Vector3 normal;
         Vector3 color;
-        int vIndex;
+        int vIndex, nIndex;
         float intensity;
 
         private int objectMode = 1;
@@ -75,12 +76,12 @@ namespace lab1.Forms
             Phong
         }
 
-        public LightingMode CurrentLightingMode { get; set; } = LightingMode.Lambert;
+        public LightingMode CurrentLightingMode { get; set; } = LightingMode.Phong;
 
         public Scene()
         {
             InitializeComponent();
-            obj = new ObjModel(car);
+            obj = new ObjModel(shark);
             this.KeyDown += Scene_KeyDown;
             this.KeyUp += Scene_KeyUp;
             movementTimer = new System.Windows.Forms.Timer();
@@ -211,6 +212,7 @@ namespace lab1.Forms
                 for (int j = 0; j < 3; j++)
                 {
                     vIndex = obj.faces[i * 3 + j] - 1;
+                    nIndex = obj.normals[i * 3 + j] - 1;
                     v = MathsOperations.TransformVertex(obj.Vertices[vIndex], resultMatrix);
 
                     verticesInViewport[j].X = v.X / v.W;
@@ -221,44 +223,51 @@ namespace lab1.Forms
                     verticecInWorld[j].X = u.X;
                     verticecInWorld[j].Y = u.Y;
                     verticecInWorld[j].Z = u.Z;
+
+                    n = MathsOperations.TransformVertex(obj.Normals[nIndex], modelMatrix);
+                    verticiesNormals[j].X = n.X;
+                    verticiesNormals[j].Y = n.Y;
+                    verticiesNormals[j].Z = n.Z;
                 }
 
                 normal = CalculateFaceNormal(verticecInWorld);
 
-                if (Vector3.ScalarMultiplication(normal, (target - eye).Normalize()) > 0) continue;
+                //if (Vector3.ScalarMultiplication(normal.Normalize(), (target.Normalize() - eye.Normalize()).Normalize()) > 0) continue;
 
                 if (CurrentLightingMode == LightingMode.Lambert)
                 {
                     intensity = CalculateLambertIntensity(normal);
+                    color = ApplyIntensityToColor(intensity);
+                    RasterizeTriangle(bitmap, verticesInViewport[0], verticesInViewport[1], verticesInViewport[2], color);
                 }
                 else if (CurrentLightingMode == LightingMode.Phong)
                 {
                     intensity = CalculatePhongIntensity(normal, verticecInWorld[0]);
+                    RasterizeTriangle(bitmap, verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
+                    verticiesNormals[0], verticiesNormals[1], verticiesNormals[2],
+                    verticecInWorld[0], verticecInWorld[1], verticecInWorld[2]);
                 }
-
-                color = ApplyIntensityToColor(intensity);
-
-                RasterizeTriangle(bitmap, verticesInViewport[0], verticesInViewport[1], verticesInViewport[2], color);
             }
 
-            // Отрисовка ребер
-            /*foreach (var face in obj.Faces)
-            {
-                for (int i = 0; i < face.VertexIndices.GetLength(0); i++)
-                {
-                    int v1Index = face.VertexIndices[i, 0] - 1;
-                    int v2Index = face.VertexIndices[(i + 1) % face.VertexIndices.GetLength(0), 0] - 1;
-
-                    Vector3 v1 = MathsOperations.TransformVertex(obj.Vertices[v1Index], resultMatrix);
-                    Vector3 v2 = MathsOperations.TransformVertex(obj.Vertices[v2Index], resultMatrix);
-
-                    v1 = new Vector3(v1.X / v1.W, v1.Y / v1.W, v1.Z / v1.W, 1);
-                    v2 = new Vector3(v2.X / v2.W, v2.Y / v2.W, v2.Z / v2.W, 1);
-
-                    DrawLine(bitmap, v1, v2, Color.Blue);
-                }
-            }*/
             pictureBox1.Image = bitmap;
+        }
+
+        Vector3 InterpolateNormal(Vector3 n0, Vector3 n1, Vector3 n2, float a, float b, float c)
+        {
+            return (n0 * a + n1 * b + n2 * c).Normalize();
+        }
+
+        Vector3 InterpolatePosition(Vector3 p0, Vector3 p1, Vector3 p2, float a, float b, float c)
+        {
+            return p0 * a + p1 * b + p2 * c;
+        }
+
+        void Barycentric(Vector3 v0, Vector3 v1, Vector3 v2, float x, float y, out float a, out float b, out float c)
+        {
+            float denom = (v1.Y - v2.Y) * (v0.X - v2.X) + (v2.X - v1.X) * (v0.Y - v2.Y);
+            a = ((v1.Y - v2.Y) * (x - v2.X) + (v2.X - v1.X) * (y - v2.Y)) / denom;
+            b = ((v2.Y - v0.Y) * (x - v2.X) + (v0.X - v2.X) * (y - v2.Y)) / denom;
+            c = 1 - a - b;
         }
 
         private void ClearBitmap(Bitmap bitmap)
@@ -320,6 +329,100 @@ namespace lab1.Forms
             bitmap.UnlockBits(bmpData);
         }
 
+        private void DrawPixel(Bitmap bitmap, int x, int y, Vector3 clr)
+        {
+
+            BitmapData bmpData = bitmap.LockBits(
+                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                ImageLockMode.ReadWrite,
+                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+            unsafe
+            {
+                byte* ptr = (byte*)bmpData.Scan0;
+                int stride = bmpData.Stride;
+
+                byte* pixel = ptr + y * stride + x * 3;
+                pixel[0] = (byte)clr.Z;
+                pixel[1] = (byte)clr.Y;
+                pixel[2] = (byte)clr.X;
+            }
+
+            bitmap.UnlockBits(bmpData);
+        }
+
+        public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2,
+                              Vector3 n0, Vector3 n1, Vector3 n2,
+                              Vector3 p0, Vector3 p1, Vector3 p2)
+        {
+            Vector3[] vertices = new Vector3[] { v0, v1, v2 };
+            Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
+
+            Vector3 top = vertices[0];
+            Vector3 middle = vertices[1];
+            Vector3 bottom = vertices[2];
+
+            int yStart = Math.Max(0, (int)Math.Ceiling(top.Y));
+            int yEnd = Math.Min(bitmap.Height - 1, (int)Math.Floor(bottom.Y));
+
+            BitmapData bmpData = bitmap.LockBits(
+                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                ImageLockMode.ReadWrite,
+                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+            for (int y = yStart; y <= yEnd; y++)
+            {
+                float x1, x2;
+
+                if (y <= middle.Y)
+                {
+                    x1 = InterpolateX(top, middle, y);
+                    x2 = InterpolateX(top, bottom, y);
+                }
+                else
+                {
+                    x1 = InterpolateX(middle, bottom, y);
+                    x2 = InterpolateX(top, bottom, y);
+                }
+
+                int xStart = (int)Math.Max(0, Math.Ceiling(Math.Min(x1, x2)));
+                int xEnd = (int)Math.Min(bitmap.Width - 1, Math.Floor(Math.Max(x1, x2)));
+
+                if (xStart > xEnd) continue;
+
+
+                for (int x = xStart; x <= xEnd; x++)
+                {
+                    float z = InterpolateZ(v0, v1, v2, x, y);
+
+                    if (z <= zBuffer[x, y])
+                    {
+                        zBuffer[x, y] = z;
+                        Barycentric(v0, v1, v2, x, y, out float a, out float b, out float c);
+                        Vector3 normal = InterpolateNormal(n0, n1, n2, a, b, c);
+                        Vector3 fragPos = InterpolatePosition(p0, p1, p2, a, b, c);
+
+                        float intensity = CalculatePhongIntensity(normal, fragPos);
+                        Vector3 color = ApplyIntensityToColor(intensity);
+                        //DrawPixel(bitmap, x, y, color);
+
+                        unsafe
+                        {
+                            byte* ptr = (byte*)bmpData.Scan0;
+                            int stride = bmpData.Stride;
+
+                            byte* pixel = ptr + y * stride + x * 3;
+                            pixel[0] = (byte)color.Z;
+                            pixel[1] = (byte)color.Y;
+                            pixel[2] = (byte)color.X;
+                        }
+                    }
+                }
+            }
+
+            bitmap.UnlockBits(bmpData);
+        }
+
         public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 color)
         {
             Vector3[] vertices = new Vector3[] { v0, v1, v2 };
@@ -336,7 +439,6 @@ namespace lab1.Forms
             {
                 float x1, x2;
 
-                // Определяем x1 и x2 в зависимости от позиции y
                 if (y < middle.Y)
                 {
                     x1 = InterpolateX(top, middle, y);
@@ -360,7 +462,69 @@ namespace lab1.Forms
                 {
                     float z = InterpolateZ(v0, v1, v2, x, y);
 
-                    // Проверка глубины
+                    if (z < zBuffer[x, y])
+                    {
+                        zBuffer[x, y] = z;
+
+                        if (!flag)
+                        {
+                            lastXStart = x;
+                            flag = true;
+                        }
+                    }
+                    else if (flag)
+                    { 
+                        DrawLine(bitmap, new Vector3(lastXStart, y, 0), new Vector3(x - 1, y, 0), color);
+                        flag = false;
+                    }
+                }
+
+                if (flag)
+                {
+                    DrawLine(bitmap, new Vector3(lastXStart, y, 0), new Vector3(xEnd, y, 0), color);
+                }
+            }
+        }
+
+        /*public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 color)
+        {
+            Vector3[] vertices = new Vector3[] { v0, v1, v2 };
+            Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
+
+            Vector3 top = vertices[0];
+            Vector3 middle = vertices[1];
+            Vector3 bottom = vertices[2];
+
+            int yStart = Math.Max(0, (int)Math.Ceiling(top.Y));
+            int yEnd = Math.Min(bitmap.Height - 1, (int)Math.Floor(bottom.Y));
+
+            for (int y = yStart; y <= yEnd; y++)
+            {
+                float x1, x2;
+
+                if (y < middle.Y)
+                {
+                    x1 = InterpolateX(top, middle, y);
+                    x2 = InterpolateX(top, bottom, y);
+                }
+                else
+                {
+                    x1 = InterpolateX(middle, bottom, y);
+                    x2 = InterpolateX(top, bottom, y);
+                }
+
+                int xStart = (int)Math.Max(0, Math.Ceiling(Math.Min(x1, x2)));
+                int xEnd = (int)Math.Min(bitmap.Width - 1, Math.Floor(Math.Max(x1, x2)));
+
+                if (xStart > xEnd) continue;
+
+                bool flag = false;
+                int lastXStart = 0;
+
+                for (int x = xStart; x <= xEnd; x++)
+                {
+                    float z = InterpolateZ(v0, v1, v2, x, y);
+
                     if (z < zBuffer[x, y])
                     {
                         zBuffer[x, y] = z;
@@ -373,97 +537,17 @@ namespace lab1.Forms
                     }
                     else if (flag)
                     {
-                        // Рисуем линию только если она была начата
                         DrawLine(bitmap, new Vector3(lastXStart, y, 0), new Vector3(x - 1, y, 0), color);
                         flag = false;
                     }
                 }
 
-                // Если линия была открыта до конца строки
                 if (flag)
                 {
                     DrawLine(bitmap, new Vector3(lastXStart, y, 0), new Vector3(xEnd, y, 0), color);
                 }
             }
-        }
-
-
-        /*
-         public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 color)
-{
-    Vector3[] vertices = new Vector3[] { v0, v1, v2 };
-    Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
-
-    Vector3 top = vertices[0];
-    Vector3 middle = vertices[1];
-    Vector3 bottom = vertices[2];
-
-    int yStart = (int)Math.Ceiling(top.Y);
-    int yEnd = (int)Math.Floor(bottom.Y);
-
-    for (int y = yStart; y <= yEnd; y++)
-    {
-        if (y < 0  y >= bitmap.Height) continue;
-
-        float x1, x2;
-
-        if (y < middle.Y)
-        {
-            x1 = InterpolateX(top, middle, y);
-            x2 = InterpolateX(top, bottom, y);
-        }
-        else
-        {
-            x1 = InterpolateX(middle, bottom, y);
-            x2 = InterpolateX(top, bottom, y);
-        }
-
-        float x_start = Math.Min(x1, x2);
-        float x_end = Math.Max(x1, x2);
-
-   
-        x_start = Math.Max(0, x_start);
-        x_end = Math.Min(bitmap.Width - 1, x_end);
-
-        bool flag = false;
-        int xStart = 0;
-        int xEnd = 0;
-
-        for (int x = (int)float.Ceiling(x_start); x <= x_end; x++)
-        {
-      
-            if (x < 0  x >= bitmap.Width  y < 0  y >= bitmap.Height) continue;
-
-            float z = InterpolateZ(v0, v1, v2, x, y);
-            if (z < zBuffer[x, y])
-            {
-                zBuffer[x, y] = z;
-
-                if (!flag)
-                {
-                    xStart = x;
-                    flag = true;
-                }
-
-                if (x + 1 > x_end)
-                {
-                    xEnd = x;
-                    DrawLine(bitmap, new Vector3(xStart, y, 0), new Vector3(xEnd, y, 0), color);
-                }
-            }
-            else
-            {
-                if (flag)
-                {
-                    xEnd = x - 1;
-                    DrawLine(bitmap, new Vector3(xStart, y, 0), new Vector3(xEnd, y, 0), color);
-                    flag = false;
-                }
-            }
-        }
-    }
-}
-         */
+        }*/
 
         private float InterpolateX(Vector3 a, Vector3 b, float y)
         {
@@ -523,11 +607,6 @@ namespace lab1.Forms
 
         private Vector3 ApplyIntensityToColor(float intensity)
         {
-            /*int r = (int)(255 * intensity);
-            int g = (int)(255 * intensity);
-            int b = (int)(255 * intensity);
-            return Color.FromArgb(r, g, b);*/
-
             byte intensityByte = (byte)(255 * intensity);
             return new Vector3(intensityByte, intensityByte, intensityByte);
         }
