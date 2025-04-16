@@ -41,12 +41,17 @@ namespace lab1.Forms
         private Vector3 up = new Vector3(0, 1, 0);
         private Vector3 lightDirection = new Vector3(-1, -1, -1).Normalize();
 
+        private Bitmap diffuseMap;
+        private Bitmap normalMap;
+        private Bitmap specularMap;
+
         private const float rotationSpeed = 0.1f;
         private const float translationSpeed = 0.3f;
         private const float speed = 0.005f;
         private System.Windows.Forms.Timer movementTimer;
 
         private const string city = "Objects\\Castelia City.obj";
+        private const string texturePath = "Objects\\Castelia City.obj";
         private const string head = "Objects\\scull.obj";
         private const string plant = "Objects\\plant.obj";
         private const string cooler = "Objects\\cooler.obj";
@@ -66,22 +71,22 @@ namespace lab1.Forms
         Vector3 v, u, n;
         Vector3 normal;
         Vector3 color;
-        int vIndex, nIndex;
+        int vIndex, nIndex, tIndex;
         float intensity;
-
         private int objectMode = 1;
         public enum LightingMode
         {
             Lambert,
-            Phong
+            Phong,
+            Texture
         }
 
-        public LightingMode CurrentLightingMode { get; set; } = LightingMode.Phong;
+        public LightingMode CurrentLightingMode { get; set; } = LightingMode.Texture;
 
         public Scene()
         {
             InitializeComponent();
-            obj = new ObjModel(shark);
+            obj = new ObjModel(plant);
             this.KeyDown += Scene_KeyDown;
             this.KeyUp += Scene_KeyUp;
             movementTimer = new System.Windows.Forms.Timer();
@@ -93,7 +98,9 @@ namespace lab1.Forms
             scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale);
             translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ);
             lightDirection = lightDirection * -1;
-
+            diffuseMap = LoadTexture("Objects\\D.jpg");
+            normalMap = LoadTexture("Objects\\N.jpg");
+            specularMap = LoadTexture("Objects\\REF.jpg");
             update();
         }
         private void Scene_KeyDown(object sender, KeyEventArgs e)
@@ -112,9 +119,14 @@ namespace lab1.Forms
                 CurrentLightingMode = CurrentLightingMode == LightingMode.Lambert ? LightingMode.Phong : LightingMode.Lambert;
                 update();
             }
+            if (e.KeyCode == Keys.T)
+            {
+                CurrentLightingMode = CurrentLightingMode == LightingMode.Lambert ? LightingMode.Texture : LightingMode.Lambert;
+                update();
+            }
 
         }
-
+      
         private void Scene_KeyUp(object sender, KeyEventArgs e)
         {
             if (pressedKeys.Contains(e.KeyCode))
@@ -206,13 +218,16 @@ namespace lab1.Forms
                 modelMatrix
                 );
 
+
             int count = obj.faces.Length / 3;
+            Vector2 uv0 = default, uv1 = default, uv2 = default;
             for (int i = 0; i < count; i++)
             {
                 for (int j = 0; j < 3; j++)
                 {
                     vIndex = obj.faces[i * 3 + j] - 1;
                     nIndex = obj.normals[i * 3 + j] - 1;
+
                     v = MathsOperations.TransformVertex(obj.Vertices[vIndex], resultMatrix);
 
                     verticesInViewport[j].X = v.X / v.W;
@@ -224,12 +239,26 @@ namespace lab1.Forms
                     verticecInWorld[j].Y = u.Y;
                     verticecInWorld[j].Z = u.Z;
 
+
                     n = MathsOperations.TransformVertex(obj.Normals[nIndex], modelMatrix);
                     verticiesNormals[j].X = n.X;
                     verticiesNormals[j].Y = n.Y;
                     verticiesNormals[j].Z = n.Z;
-                }
 
+
+
+                    if (CurrentLightingMode == LightingMode.Texture)
+                    {
+                        tIndex = obj.textures[i * 3 + j] - 1;
+                        var uv = obj.TextureVertices[tIndex];
+                        Vector2 uvCoord = new Vector2(uv.X, uv.Y);
+                        if (j == 0) uv0 = uvCoord;
+                        if (j == 1) uv1 = uvCoord;
+                        if (j == 2) uv2 = uvCoord;
+                    }
+                   
+                }
+          
                 normal = CalculateFaceNormal(verticecInWorld);
 
                 //if (Vector3.ScalarMultiplication(normal.Normalize(), (target.Normalize() - eye.Normalize()).Normalize()) > 0) continue;
@@ -247,6 +276,16 @@ namespace lab1.Forms
                     verticiesNormals[0], verticiesNormals[1], verticiesNormals[2],
                     verticecInWorld[0], verticecInWorld[1], verticecInWorld[2]);
                 }
+                else if (CurrentLightingMode == LightingMode.Texture)
+                {
+                    RasterizeTriangleTexture(bitmap,
+       verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
+       verticecInWorld[0], verticecInWorld[1], verticecInWorld[2],
+       verticiesNormals[0], verticiesNormals[1], verticiesNormals[2],
+       uv0, uv1, uv2,
+       diffuseMap, normalMap, specularMap);
+                }
+
             }
 
             pictureBox1.Image = bitmap;
@@ -260,6 +299,34 @@ namespace lab1.Forms
         Vector3 InterpolatePosition(Vector3 p0, Vector3 p1, Vector3 p2, float a, float b, float c)
         {
             return p0 * a + p1 * b + p2 * c;
+        }
+        Vector2 InterpolateUV(Vector2 uv0, Vector2 uv1, Vector2 uv2, float a, float b, float c)
+        {
+            return new Vector2(
+                a * uv0.X + b * uv1.X + c * uv2.X,
+                a * uv0.Y + b * uv1.Y + c * uv2.Y
+            );
+        }
+
+        Color SampleTexture(Bitmap texture, Vector2 uv)
+        {
+            int x = Math.Clamp((int)(uv.X * texture.Width), 0, texture.Width - 1);
+            int y = Math.Clamp((int)((1 - uv.Y) * texture.Height), 0, texture.Height - 1);
+            return texture.GetPixel(x, y);
+        }
+
+        Vector3 SampleNormalMap(Bitmap normalMap, Vector2 uv)
+        {
+            Color c = SampleTexture(normalMap, uv);
+            float nx = c.R / 255.0f * 2 - 1;
+            float ny = c.G / 255.0f * 2 - 1;
+            float nz = c.B / 255.0f * 2 - 1;
+            return new Vector3(nx, ny, nz);
+        }
+
+        float SampleSpecularMap(Bitmap specularMap, Vector2 uv)
+        {
+            return SampleTexture(specularMap, uv).R / 255.0f;
         }
 
         void Barycentric(Vector3 v0, Vector3 v1, Vector3 v2, float x, float y, out float a, out float b, out float c)
@@ -350,6 +417,101 @@ namespace lab1.Forms
 
             bitmap.UnlockBits(bmpData);
         }
+        public void RasterizeTriangleTexture(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2,
+            Vector3 p0, Vector3 p1, Vector3 p2,
+            Vector3 n0, Vector3 n1, Vector3 n2,
+            Vector2 uv0, Vector2 uv1, Vector2 uv2,
+            Bitmap diffuseMap, Bitmap normalMap, Bitmap specularMap) {
+            Vector3[] vertices = new Vector3[] { v0, v1, v2 };
+            Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
+
+            Vector3 top = vertices[0];
+            Vector3 middle = vertices[1];
+            Vector3 bottom = vertices[2];
+
+            int yStart = Math.Max(0, (int)Math.Ceiling(top.Y));
+            int yEnd = Math.Min(bitmap.Height - 1, (int)Math.Floor(bottom.Y));
+
+            BitmapData bmpData = bitmap.LockBits(
+                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                ImageLockMode.ReadWrite,
+                 System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+            for (int y = yStart; y <= yEnd; y++)
+            {
+                float x1, x2;
+
+                if (y <= middle.Y)
+                {
+                    x1 = InterpolateX(top, middle, y);
+                    x2 = InterpolateX(top, bottom, y);
+                }
+                else
+                {
+                    x1 = InterpolateX(middle, bottom, y);
+                    x2 = InterpolateX(top, bottom, y);
+                }
+
+                int xStart = (int)Math.Max(0, Math.Ceiling(Math.Min(x1, x2)));
+                int xEnd = (int)Math.Min(bitmap.Width - 1, Math.Floor(Math.Max(x1, x2)));
+
+                if (xStart > xEnd) continue;
+
+                for (int x = xStart; x <= xEnd; x++)
+                {
+                    float z = InterpolateZ(v0, v1, v2, x, y);
+
+                    if (z <= zBuffer[x, y])
+                    {
+                        zBuffer[x, y] = z;
+                        Barycentric(v0, v1, v2, x, y, out float a, out float c, out float d);
+
+                        Vector3 fragPos = InterpolatePosition(p0, p1, p2, a, c, d);
+                        Vector3 normal = InterpolateNormal(n0, n1, n2, a, c, d).Normalize();
+                        Vector2 uv = InterpolateUV(uv0, uv1, uv2, a,c, d);
+
+                        Color diffuseColor = SampleTexture(diffuseMap, uv);
+                        Vector3 mappedNormal = SampleNormalMap(normalMap, uv).Normalize();
+                        float specularStrength = SampleSpecularMap(specularMap, uv);
+                        Vector3 lightDir = lightDirection.Normalize();
+
+
+                        /* float NdotL = Math.Max(0, Vector3.ScalarMultiplication(mappedNormal, lightDir));
+
+                         Vector3 viewDir = (eye - fragPos).Normalize();
+                         Vector3 reflectDir = (mappedNormal * 2 * Vector3.ScalarMultiplication(lightDir, mappedNormal) - lightDir).Normalize();
+                         float specular = (float)Math.Pow(Math.Max(0, Vector3.ScalarMultiplication(viewDir, reflectDir)), 32) * specularStrength;
+
+                         int r = Math.Clamp((int)(diffuseColor.R * NdotL + 255 * specular), 0, 255);
+                         int g = Math.Clamp((int)(diffuseColor.G * NdotL + 255 * specular), 0, 255);
+                         int b = Math.Clamp((int)(diffuseColor.B * NdotL + 255 * specular), 0, 255); */
+
+                        float intensity = CalculatePhongIntensity(mappedNormal, fragPos);
+
+                       // можно добавить влияние specularStrength (например, как множитель):
+                       intensity *= specularStrength;
+
+                       int r = Math.Clamp((int)(diffuseColor.R * intensity), 0, 255);
+                       int g = Math.Clamp((int)(diffuseColor.G * intensity), 0, 255);
+                       int b = Math.Clamp((int)(diffuseColor.B * intensity), 0, 255); 
+
+
+                        unsafe
+                        {
+                            byte* ptr = (byte*)bmpData.Scan0;
+                            int stride = bmpData.Stride;
+                            byte* pixel = ptr + y * stride + x * 3;
+
+                            pixel[0] = (byte)b;
+                            pixel[1] = (byte)g;
+                            pixel[2] = (byte)r;
+                        }
+                    }
+                }
+            }
+
+            bitmap.UnlockBits(bmpData);
+        }
 
         public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2,
                               Vector3 n0, Vector3 n1, Vector3 n2,
@@ -422,7 +584,6 @@ namespace lab1.Forms
 
             bitmap.UnlockBits(bmpData);
         }
-
         public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 color)
         {
             Vector3[] vertices = new Vector3[] { v0, v1, v2 };
@@ -610,6 +771,58 @@ namespace lab1.Forms
             byte intensityByte = (byte)(255 * intensity);
             return new Vector3(intensityByte, intensityByte, intensityByte);
         }
+        public Bitmap LoadTexture(string filePath)
+        {
+            return new Bitmap(filePath);
+        }
+      
+        public Color ApplyDiffuseMap(Vector3 vertex, Bitmap diffuseMap, float u, float v)
+        {
+            int texX = (int)(u * diffuseMap.Width);
+            int texY = (int)(v * diffuseMap.Height);
+            return diffuseMap.GetPixel(texX, texY);
+        }
+
+        public Vector3 ApplyNormalMap(Vector3 vertex, Bitmap normalMap, float u, float v)
+        {
+            
+            int texX = (int)(u * normalMap.Width);
+            int texY = (int)(v * normalMap.Height);
+
+            
+            Color texColor = normalMap.GetPixel(texX, texY);
+
+            
+            float nx = texColor.R / 255.0f * 2.0f - 1.0f;
+            float ny = texColor.G / 255.0f * 2.0f - 1.0f;
+            float nz = texColor.B / 255.0f * 2.0f - 1.0f;
+
+            return new Vector3(nx, ny, nz);
+        }
+
+        public float ApplySpecularMap(Vector3 vertex, Bitmap specularMap, float u, float v)
+        {
+            
+            int texX = (int)(u * specularMap.Width);
+            int texY = (int)(v * specularMap.Height);
+            
+            Color texColor = specularMap.GetPixel(texX, texY);
+
+            return texColor.R / 255.0f;
+        }
+
+        public Vector2 InterpolateWithPerspectiveCorrection(Vector2 uv0, Vector2 uv1, float z0, float z1, float t)
+        {
+            
+            float invZ0 = 1.0f / z0;
+            float invZ1 = 1.0f / z1;
+
+            float u = (1 - t) * (uv0.X * invZ0) + t * (uv1.X * invZ1);
+            float v = (1 - t) * (uv0.Y * invZ0) + t * (uv1.Y * invZ1);
+
+            return new Vector2(u, v);
+        }
+
 
         private void HandleKeyPress(Keys key, bool isControlPressed)
         {

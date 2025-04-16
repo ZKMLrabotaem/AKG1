@@ -1,4 +1,5 @@
-﻿using lab1.Structures;
+﻿using Aspose.ThreeD.Shading;
+using lab1.Structures;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -15,6 +16,7 @@ namespace lab1.ParseObject
         public List<Face> Faces { get; } = new List<Face>();
         public int[] faces;
         public int[] normals;
+        public int[] textures;
         public List<Vector2> TextureVertices { get; } = new List<Vector2>();
         public List<Vector3> Normals { get; } = new List<Vector3>();
 
@@ -67,20 +69,25 @@ namespace lab1.ParseObject
                                     normalsIndices[1] = vertexIndices[j, 2];
                                     normalsIndices[2] = vertexIndices[j + 1, 2];
 
-                                    Faces.Add(new Face(triangleIndices, normalsIndices));
+                                    int[] textureIndices = new int[3];
+                                    textureIndices[0] = vertexIndices[0, 1];
+                                    textureIndices[1] = vertexIndices[j, 1];
+                                    textureIndices[2] = vertexIndices[j + 1, 1];
+
+                                    Faces.Add(new Face(triangleIndices, normalsIndices, textureIndices));
                                 }
                             }
 
                             break;
 
-                        /*case "vt": // Texture coordinates
+                        case "vt": // Texture coordinates
                             if (tokens.Length == 3)
                             {
                                 float x = float.Parse(tokens[1], CultureInfo.InvariantCulture);
                                 float y = float.Parse(tokens[2], CultureInfo.InvariantCulture);
                                 TextureVertices.Add(new Vector2(x, y));
                             }
-                            break;*/
+                            break;
 
                         case "vn": // Normals
                             if (tokens.Length == 4)
@@ -98,6 +105,7 @@ namespace lab1.ParseObject
             int facesCount = Faces.Count;
             faces = new int[facesCount * 3];
             normals = new int[facesCount * 3];
+            textures = new int[facesCount * 3];
             int i = 0;
             foreach (Face face in Faces)
             {
@@ -105,6 +113,7 @@ namespace lab1.ParseObject
                 {
                     faces[i * 3 + j] = face.VertexIndices[j];
                     normals[i * 3 + j] = face.NormalsIndices[j];
+                    textures[i * 3 + j] = face.TextureIndices[j];
                 }
                 i++;
             }

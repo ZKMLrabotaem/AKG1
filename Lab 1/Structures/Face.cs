@@ -10,10 +10,12 @@ namespace lab1.Structures
     {
         public int[] VertexIndices { get; }
         public int[] NormalsIndices { get; }
-        public Face(int[] vertexIndices, int[] normalsIndices)
+        public int[] TextureIndices { get; }
+        public Face(int[] vertexIndices, int[] normalsIndices, int[] textureIndices)
         {
             VertexIndices = vertexIndices;
             NormalsIndices = normalsIndices;
+            TextureIndices = textureIndices;
         }
     }
 }
