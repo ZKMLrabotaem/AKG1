@@ -51,7 +51,6 @@ namespace lab1.Forms
         private System.Windows.Forms.Timer movementTimer;
 
         private const string city = "Objects\\Castelia City.obj";
-        private const string texturePath = "Objects\\Castelia City.obj";
         private const string head = "Objects\\scull.obj";
         private const string plant = "Objects\\plant.obj";
         private const string cooler = "Objects\\cooler.obj";
@@ -86,7 +85,7 @@ namespace lab1.Forms
         public Scene()
         {
             InitializeComponent();
-            obj = new ObjModel(plant);
+            obj = new ObjModel(eyeball);
             this.KeyDown += Scene_KeyDown;
             this.KeyUp += Scene_KeyUp;
             movementTimer = new System.Windows.Forms.Timer();
@@ -98,8 +97,8 @@ namespace lab1.Forms
             scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale);
             translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ);
             lightDirection = lightDirection * -1;
-            diffuseMap = LoadTexture("Objects\\D.jpg");
-            normalMap = LoadTexture("Objects\\N.jpg");
+            diffuseMap = LoadTexture("Objects\\Eye_D.jpg");
+            normalMap = LoadTexture("Objects\\Eye_N.jpg");
             specularMap = LoadTexture("Objects\\REF.jpg");
             update();
         }
@@ -249,16 +248,40 @@ namespace lab1.Forms
 
                     if (CurrentLightingMode == LightingMode.Texture)
                     {
-                        tIndex = obj.textures[i * 3 + j] - 1;
-                        var uv = obj.TextureVertices[tIndex];
-                        Vector2 uvCoord = new Vector2(uv.X, uv.Y);
-                        if (j == 0) uv0 = uvCoord;
-                        if (j == 1) uv1 = uvCoord;
-                        if (j == 2) uv2 = uvCoord;
+                        if (obj.textures != null && obj.textures.Length > i * 3 + j)
+                        {
+                            tIndex = obj.textures[i * 3 + j] - 1;
+
+                            if (tIndex >= 0 && tIndex < obj.TextureVertices.Count)
+                            {
+                                var uv = obj.TextureVertices[tIndex];
+                                Vector2 uvCoord = new Vector2(uv.X, uv.Y);
+
+                                if (j == 0) uv0 = uvCoord;
+                                if (j == 1) uv1 = uvCoord;
+                                if (j == 2) uv2 = uvCoord;
+                            }
+                            else
+                            {
+                                Vector2 defaultUV = new Vector2(0, 0);
+                                if (j == 0) uv0 = defaultUV;
+                                if (j == 1) uv1 = defaultUV;
+                                if (j == 2) uv2 = defaultUV;
+                            }
+                        }
+                        else
+                        {
+                            Vector2 defaultUV = new Vector2(0, 0);
+                            if (j == 0) uv0 = defaultUV;
+                            if (j == 1) uv1 = defaultUV;
+                            if (j == 2) uv2 = defaultUV;
+                        }
                     }
-                   
+
+
+
                 }
-          
+
                 normal = CalculateFaceNormal(verticecInWorld);
 
                 //if (Vector3.ScalarMultiplication(normal.Normalize(), (target.Normalize() - eye.Normalize()).Normalize()) > 0) continue;
@@ -422,6 +445,7 @@ namespace lab1.Forms
             Vector3 n0, Vector3 n1, Vector3 n2,
             Vector2 uv0, Vector2 uv1, Vector2 uv2,
             Bitmap diffuseMap, Bitmap normalMap, Bitmap specularMap) {
+
             Vector3[] vertices = new Vector3[] { v0, v1, v2 };
             Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
 
@@ -471,12 +495,16 @@ namespace lab1.Forms
                         Vector2 uv = InterpolateUV(uv0, uv1, uv2, a,c, d);
 
                         Color diffuseColor = SampleTexture(diffuseMap, uv);
-                        Vector3 mappedNormal = SampleNormalMap(normalMap, uv).Normalize();
-                        float specularStrength = SampleSpecularMap(specularMap, uv);
+                        Vector3 mappedNormal = normalMap != null
+                        ? SampleNormalMap(normalMap, uv).Normalize()
+                        : normal;
+                        float specularStrength = specularMap != null
+                        ? SampleSpecularMap(specularMap, uv)
+                        : 1f;
                         Vector3 lightDir = lightDirection.Normalize();
 
 
-                        /* float NdotL = Math.Max(0, Vector3.ScalarMultiplication(mappedNormal, lightDir));
+                         float NdotL = Math.Max(0, Vector3.ScalarMultiplication(mappedNormal, lightDir));
 
                          Vector3 viewDir = (eye - fragPos).Normalize();
                          Vector3 reflectDir = (mappedNormal * 2 * Vector3.ScalarMultiplication(lightDir, mappedNormal) - lightDir).Normalize();
@@ -484,16 +512,16 @@ namespace lab1.Forms
 
                          int r = Math.Clamp((int)(diffuseColor.R * NdotL + 255 * specular), 0, 255);
                          int g = Math.Clamp((int)(diffuseColor.G * NdotL + 255 * specular), 0, 255);
-                         int b = Math.Clamp((int)(diffuseColor.B * NdotL + 255 * specular), 0, 255); */
+                         int b = Math.Clamp((int)(diffuseColor.B * NdotL + 255 * specular), 0, 255); 
 
-                        float intensity = CalculatePhongIntensity(mappedNormal, fragPos);
+                        /*float intensity = CalculatePhongIntensity(mappedNormal, fragPos);
 
                        // можно добавить влияние specularStrength (например, как множитель):
                        intensity *= specularStrength;
 
                        int r = Math.Clamp((int)(diffuseColor.R * intensity), 0, 255);
                        int g = Math.Clamp((int)(diffuseColor.G * intensity), 0, 255);
-                       int b = Math.Clamp((int)(diffuseColor.B * intensity), 0, 255); 
+                       int b = Math.Clamp((int)(diffuseColor.B * intensity), 0, 255); */
 
 
                         unsafe
