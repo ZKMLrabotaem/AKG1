@@ -65,4 +65,9 @@
         }
         return normalizedVectors;
     }
+
+    public static Vector3 operator /(Vector3 a, float b)
+    {
+        return new Vector3(a.X/b, a.Y/b, a.Z/b);
+    }
 }

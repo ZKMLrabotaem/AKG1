@@ -61,6 +61,10 @@ namespace lab1.Forms
         private const string eyeball = "Objects\\eyeball.obj";
         private const string church = "Objects\\church_of_st._tiss.obj";
         private const string fish = "Objects\\fish.obj";
+        private const string glasses = "Objects\\oculos.obj";
+        private const string moon = "Objects\\Moon 2K.obj";
+        private const string cube = "Objects\\cube.obj";
+
         private HashSet<Keys> pressedKeys = new HashSet<Keys>();
 
         private float[,] zBuffer;
@@ -88,7 +92,7 @@ namespace lab1.Forms
         public Scene()
         {
             InitializeComponent();
-            obj = new ObjModel(eyeball);
+            obj = new ObjModel(cube);
             this.KeyDown += Scene_KeyDown;
             this.KeyUp += Scene_KeyUp;
             movementTimer = new System.Windows.Forms.Timer();
@@ -100,22 +104,28 @@ namespace lab1.Forms
             scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale);
             translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ);
             lightDirection = lightDirection * -1;
-            diffuseMap = LoadTexture("Objects\\Eye_D.jpg");
-            normalMap = LoadTexture("Objects\\Eye_N.jpg");
-            specularMap = LoadTexture("Objects\\REF.jpg");
+
+            //diffuseMap = LoadTexture("Objects\\glasses.png");
+            //diffuseMap = LoadTexture("Objects\\fish_texture.png");
+            //diffuseMap = LoadTexture("Objects\\Diffuse_2K.png");
+            diffuseMap = LoadTexture("Objects\\Снимок экрана 2025-04-18 174516.png");
+            //diffuseMap = LoadTexture("Objects\\Eye_D.jpg");
+            //normalMap = LoadTexture("Objects\\Eye_N.jpg");
+            //specularMap = LoadTexture("Objects\\REF.jpg");
+            //specularMap = LoadTexture("Objects\\Bump_2K.png");
 
             bmpData5 = diffuseMap.LockBits(
                 new Rectangle(0, 0, diffuseMap.Width, diffuseMap.Height),
                 ImageLockMode.ReadOnly,
                 System.Drawing.Imaging.PixelFormat.Format24bppRgb);
 
-            bmpData6 = normalMap.LockBits(
+            bmpData6 = normalMap == null ? null : normalMap.LockBits(
                 new Rectangle(0, 0, normalMap.Width, normalMap.Height),
                 ImageLockMode.ReadOnly,
                 System.Drawing.Imaging.PixelFormat.Format24bppRgb);
 
 
-            bmpData7 = specularMap.LockBits(
+            bmpData7 = specularMap == null ? null : specularMap.LockBits(
                 new Rectangle(0, 0, specularMap.Width, specularMap.Height),
                 ImageLockMode.ReadOnly,
                 System.Drawing.Imaging.PixelFormat.Format24bppRgb);
@@ -197,6 +207,7 @@ namespace lab1.Forms
         protected void update()
         {
             bitmap = new Bitmap(pictureBox1.Width, pictureBox1.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            ClearBitmap(bitmap);
             zBuffer = new float[pictureBox1.Width, pictureBox1.Height];
             InitializeZBuffer();
 
@@ -241,6 +252,7 @@ namespace lab1.Forms
             Vector2 uv0 = default, uv1 = default, uv2 = default;
             for (int i = 0; i < count; i++)
             {
+                float[] invW = new float[3];
                 for (int j = 0; j < 3; j++)
                 {
                     vIndex = obj.faces[i * 3 + j] - 1;
@@ -248,9 +260,12 @@ namespace lab1.Forms
 
                     v = MathsOperations.TransformVertex(obj.Vertices[vIndex], resultMatrix);
 
-                    verticesInViewport[j].X = v.X / v.W;
-                    verticesInViewport[j].Y = v.Y / v.W;
-                    verticesInViewport[j].Z = v.Z / v.W;
+                    Vector3 vClip = MathsOperations.TransformVertex(obj.Vertices[vIndex], resultMatrix);
+                    verticesInViewport[j].X = vClip.X / vClip.W;
+                    verticesInViewport[j].Y = vClip.Y / vClip.W;
+                    verticesInViewport[j].Z = vClip.Z / vClip.W;
+
+                    invW[j] = 1.0f / vClip.W;
 
                     u = MathsOperations.TransformVertex(obj.Vertices[vIndex], modelMatrix);
                     verticecInWorld[j].X = u.X;
@@ -321,13 +336,14 @@ namespace lab1.Forms
                 else if (CurrentLightingMode == LightingMode.Texture)
                 {
                     RasterizeTriangleTexture(bitmap,
-       verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
-       verticecInWorld[0], verticecInWorld[1], verticecInWorld[2],
-       verticiesNormals[0], verticiesNormals[1], verticiesNormals[2],
-       uv0, uv1, uv2,
-       diffuseMap, normalMap, specularMap);
-                }
+    verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
+    verticecInWorld[0], verticecInWorld[1], verticecInWorld[2],
+    verticiesNormals[0], verticiesNormals[1], verticiesNormals[2],
+    uv0, uv1, uv2,
+    invW[0], invW[1], invW[2],          //  <<<  новые параметры
+    diffuseMap, normalMap, specularMap);
 
+                }
             }
 
             pictureBox1.Image = bitmap;
@@ -372,12 +388,12 @@ namespace lab1.Forms
         }
 
         void Barycentric(Vector3 v0, Vector3 v1, Vector3 v2, float x, float y, out float a, out float b, out float c)
-        {
-            float denom = (v1.Y - v2.Y) * (v0.X - v2.X) + (v2.X - v1.X) * (v0.Y - v2.Y);
-            a = ((v1.Y - v2.Y) * (x - v2.X) + (v2.X - v1.X) * (y - v2.Y)) / denom;
-            b = ((v2.Y - v0.Y) * (x - v2.X) + (v0.X - v2.X) * (y - v2.Y)) / denom;
-            c = 1 - a - b;
-        }
+            {
+                float denom = (v1.Y - v2.Y) * (v0.X - v2.X) + (v2.X - v1.X) * (v0.Y - v2.Y);
+                a = ((v1.Y - v2.Y) * (x - v2.X) + (v2.X - v1.X) * (y - v2.Y)) / denom;
+                b = ((v2.Y - v0.Y) * (x - v2.X) + (v0.X - v2.X) * (y - v2.Y)) / denom;
+                c = 1 - a - b;
+            }
 
         private void ClearBitmap(Bitmap bitmap)
         {
@@ -392,7 +408,7 @@ namespace lab1.Forms
                 int bytes = bmpData.Stride * bitmap.Height;
 
                 for (int i = 0; i < bytes; i++)
-                    ptr[i] = 200;
+                    ptr[i] = 255;
             }
 
             bitmap.UnlockBits(bmpData);
@@ -459,10 +475,12 @@ namespace lab1.Forms
 
             bitmap.UnlockBits(bmpData);
         }
-        public void RasterizeTriangleTexture(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2,
-    Vector3 p0, Vector3 p1, Vector3 p2,
-    Vector3 n0, Vector3 n1, Vector3 n2,
-    Vector2 uv0, Vector2 uv1, Vector2 uv2,
+        public void RasterizeTriangleTexture(Bitmap bitmap,
+    Vector3 v0, Vector3 v1, Vector3 v2,          // экранные координаты
+    Vector3 p0, Vector3 p1, Vector3 p2,          // мировые координаты
+    Vector3 n0, Vector3 n1, Vector3 n2,          // нормали вершин
+    Vector2 uv0, Vector2 uv1, Vector2 uv2,       // UV
+    float invW0, float invW1, float invW2,       // 1/w
     Bitmap diffuseMap, Bitmap normalMap, Bitmap specularMap)
         {
             Vector3[] vertices = new Vector3[] { v0, v1, v2 };
@@ -488,11 +506,19 @@ namespace lab1.Forms
                 byte* ptr5 = (byte*)bmpData5.Scan0;
                 int stride5 = bmpData5.Stride;
 
-                byte* ptr6 = (byte*)bmpData6.Scan0;
-                int stride6 = bmpData6.Stride;
+                byte* ptr6 = normalMap != null
+                    ? (byte*)bmpData6.Scan0
+                    : null;
+                int stride6 = normalMap != null
+                    ? bmpData6.Stride
+                    : 0;
 
-                byte* ptr7 = (byte*)bmpData7.Scan0;
-                int stride7 = bmpData7.Stride;
+                byte* ptr7 = specularMap != null
+                    ? (byte*)bmpData7.Scan0
+                    : null;
+                int stride7 = specularMap != null
+                    ? bmpData7.Stride
+                    : 0;
 
                 for (int y = yStart; y <= yEnd; y++)
                 {
@@ -521,10 +547,22 @@ namespace lab1.Forms
                         if (z <= zBuffer[x, y])
                         {
                             zBuffer[x, y] = z;
-                            Barycentric(v0, v1, v2, x, y, out float a, out float c, out float d);
 
-                            Vector3 fragPos = InterpolatePosition(p0, p1, p2, a, c, d);
-                            Vector2 uv = InterpolateUV(uv0, uv1, uv2, a, c, d);
+                            Barycentric(v0, v1, v2, x, y, out float α, out float β, out float γ);
+
+                            // общий вес
+                            float invW = α * invW0 + β * invW1 + γ * invW2;
+
+                            // perspective correct UV
+                            float u = (α * uv0.X * invW0 + β * uv1.X * invW1 + γ * uv2.X * invW2) / invW;
+                            float v = (α * uv0.Y * invW0 + β * uv1.Y * invW1 + γ * uv2.Y * invW2) / invW;
+                            Vector2 uv = new Vector2(u, v);
+
+                            // (по желанию) то же самое для позиции и нормали
+                            Vector3 fragPos = (
+                                  p0 * (α * invW0) +
+                                  p1 * (β * invW1) +
+                                  p2 * (γ * invW2)) / invW;
 
                             int x5 = Math.Clamp((int)(uv.X * diffuseMap.Width), 0, diffuseMap.Width - 1);
                             int y5 = Math.Clamp((int)((1 - uv.Y) * diffuseMap.Height), 0, diffuseMap.Height - 1);
@@ -535,36 +573,45 @@ namespace lab1.Forms
                             byte g5 = pixel5[1];
                             byte b5 = pixel5[0];
 
-
                             Vector3 diffuseColor = new Vector3(r5, g5, b5);
 
-                            int x6 = Math.Clamp((int)(uv.X * normalMap.Width), 0, normalMap.Width - 1);
-                            int y6 = Math.Clamp((int)((1 - uv.Y) * normalMap.Height), 0, normalMap.Height - 1);
+                            Vector3 mappedNormal;
+                            if (normalMap != null)
+                            {
+                                int x6 = Math.Clamp((int)(uv.X * normalMap.Width), 0, normalMap.Width - 1);
+                                int y6 = Math.Clamp((int)((1 - uv.Y) * normalMap.Height), 0, normalMap.Height - 1);
 
-                            byte* pixel6 = ptr6 + y6 * stride6 + x6 * 3;
+                                byte* pixel6 = ptr6 + y6 * stride6 + x6 * 3;
 
-                            byte r6 = pixel6[2];
-                            byte g6 = pixel6[1];
-                            byte b6 = pixel6[0];
+                                byte r6 = pixel6[2];
+                                byte g6 = pixel6[1];
+                                byte b6 = pixel6[0];
+                                float nx = r6 / 255.0f * 2 - 1;
+                                float ny = g6 / 255.0f * 2 - 1;
+                                float nz = b6 / 255.0f * 2 - 1;
+                                mappedNormal = new Vector3(nx, ny, nz).Normalize();
+                            }
+                            else
+                            {
+                                mappedNormal = InterpolateNormal(n0, n1, n2, α, β, γ);
+                            }
+                            float specularStrength;
+                            if (specularMap != null)
+                            {
+                                int x7 = Math.Clamp((int)(uv.X * specularMap.Width), 0, specularMap.Width - 1);
+                                int y7 = Math.Clamp((int)((1 - uv.Y) * specularMap.Height), 0, specularMap.Height - 1);
 
+                                byte* pixel7 = ptr7 + y7 * stride7 + x7 * 3;
 
-                            float nx = r6 / 255.0f * 2 - 1;
-                            float ny = g6 / 255.0f * 2 - 1;
-                            float nz = b6 / 255.0f * 2 - 1;
-
-                            Vector3 mappedNormal = new Vector3(nx, ny, nz).Normalize();
-
-                            int x7 = Math.Clamp((int)(uv.X * specularMap.Width), 0, specularMap.Width - 1);
-                            int y7 = Math.Clamp((int)((1 - uv.Y) * specularMap.Height), 0, specularMap.Height - 1);
-
-                            byte* pixel7 = ptr7 + y7 * stride7 + x7 * 3;
-
-                            byte r7 = pixel7[2];
-                            byte g7 = pixel7[1];
-                            byte b7 = pixel7[0];
-
-
-                            float specularStrength = b7 / 255.0f;
+                                byte r7 = pixel7[2];
+                                byte g7 = pixel7[1];
+                                byte b7 = pixel7[0];
+                                specularStrength = b7 / 255.0f;
+                            }
+                            else
+                            {
+                                specularStrength = 0.5f;
+                            }
 
                             Vector3 lightDir = lightDirection.Normalize();
                             Vector3 viewDir = (eye - fragPos).Normalize();
