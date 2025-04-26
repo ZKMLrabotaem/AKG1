@@ -14,11 +14,26 @@ namespace lab1.ParseObject
     {
         public List<Vector3> Vertices { get; } = new List<Vector3>();
         public List<Face> Faces { get; } = new List<Face>();
+
         public int[] faces;
         public int[] normals;
         public int[] textures;
         public List<Vector2> TextureVertices { get; } = new List<Vector2>();
         public List<Vector3> Normals { get; } = new List<Vector3>();
+
+        private float minZ = float.MaxValue;
+        private float maxTailZ = float.MinValue;
+
+        private List<Vector3> animatedVertices; // Анимированные вершины
+        private List<int> tailVerticesIndices = new List<int>();  // Индексы вершин хвоста
+
+        private float amplitude = 0.3f;
+        private float frequency = 1.0f;
+        private float time = 0.0f;
+
+        private List<Vector3> previousOffsets;
+        private float damping = 0.98f; // коэффициент затухания
+        private float waveSpeed = 4.0f; // скорость волны
 
         public ObjModel(string filePath)
         {
@@ -39,6 +54,7 @@ namespace lab1.ParseObject
                                 float y = float.Parse(tokens[2], CultureInfo.InvariantCulture);
                                 float z = float.Parse(tokens[3], CultureInfo.InvariantCulture);
                                 Vertices.Add(new Vector3(x, y, z));
+                                if (z < minZ) minZ = z;
                             }
                             break;
 
@@ -101,6 +117,8 @@ namespace lab1.ParseObject
                     }
                 }
             }
+            animatedVertices = new List<Vector3>(Vertices);
+            previousOffsets = new List<Vector3>(new Vector3[Vertices.Count]);
 
             int facesCount = Faces.Count;
             faces = new int[facesCount * 3];
@@ -117,6 +135,56 @@ namespace lab1.ParseObject
                 }
                 i++;
             }
+
+            float tailThreshold = minZ + (Vertices.Max(v => v.Z) - minZ) * 1f;
+
+            for (int j = 0; j < Vertices.Count; j++)
+            {
+                if (Vertices[j].Z <= tailThreshold)
+                {
+                    tailVerticesIndices.Add(j);
+                    if (maxTailZ < Vertices[j].Z) maxTailZ = Vertices[j].Z;
+                }
+            }
+        }
+
+        public void Update(float deltaTime)
+        {
+            time += deltaTime;
+
+            animatedVertices = new List<Vector3>(Vertices);
+
+            for (int i = 0; i < tailVerticesIndices.Count; i++)
+            {
+                int index = tailVerticesIndices[i];
+
+                float distanceFromBase = Vertices[index].Z - maxTailZ;
+
+                float phase = frequency * time - distanceFromBase * waveSpeed;
+
+                float offsetX = amplitude * distanceFromBase *
+                                (float)Math.Sin(phase);
+
+                // Применим затухание и интерполяцию
+                Vector3 previousOffset = previousOffsets[index];
+                Vector3 targetOffset = new Vector3(offsetX, 0, 0);
+                Vector3 smoothedOffset = Vector3.Lerp(previousOffset, targetOffset, 0.2f);
+                smoothedOffset *= damping;
+
+                // Сохраняем новое смещение
+                previousOffsets[index] = smoothedOffset;
+
+                // Применяем смещение к текущей вершине
+                Vector3 vertex = animatedVertices[index];
+                vertex += smoothedOffset;
+                animatedVertices[index] = vertex;
+
+            }
+        }
+
+        public List<Vector3> GetAnimatedVertices()
+        {
+            return animatedVertices;
         }
     }
 }

@@ -71,6 +71,18 @@
         return normalizedVectors;
     }
 
+    public static Vector3 Lerp(Vector3 a, Vector3 b, float t)
+    {
+        // Ограничим t от 0 до 1 для корректности
+        t = Math.Clamp(t, 0f, 1f);
+
+        return new Vector3(
+            a.X + (b.X - a.X) * t,
+            a.Y + (b.Y - a.Y) * t,
+            a.Z + (b.Z - a.Z) * t
+        );
+    }
+
     public static Vector3 operator /(Vector3 a, float b)
     {
         return new Vector3(a.X/b, a.Y/b, a.Z/b);

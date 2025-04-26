@@ -41,6 +41,7 @@ namespace lab1.Forms
         private const float TranslationSpeed = 0.3f;
         private const float MouseWheelSpeed = 0.0005f;
         private System.Windows.Forms.Timer movementTimer;
+        private System.Windows.Forms.Timer animationTimer;
 
         private const string BassObjPath = "Objects\\bass_object.obj";
         private const string BassColorPath = "Objects\\bass_color.png";
@@ -78,6 +79,13 @@ namespace lab1.Forms
             };
             movementTimer.Tick += MovementTimer_Tick;
 
+            animationTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 50
+            };
+            animationTimer.Tick += AnimationTimer_Tick;
+            animationTimer.Start();
+
             rotateXMatrix = Matricies.GetRotateXMatrix(rotationX);
             rotateYMatrix = Matricies.GetRotateYMatrix(rotationY);
             rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
@@ -113,6 +121,13 @@ namespace lab1.Forms
 
             UpdateScene();
         }
+
+        private void AnimationTimer_Tick(object? sender, EventArgs e)
+        {
+            obj.Update(animationTimer.Interval);
+            UpdateScene();
+        }
+
         private void Scene_KeyDown(object sender, KeyEventArgs e)
         {
             pressedKeys.Add(e.KeyCode);
@@ -206,6 +221,7 @@ namespace lab1.Forms
             int faceCount = obj.faces.Length / 3;
             float[] invW = new float[3];
             Vector2 uv0 = default, uv1 = default, uv2 = default;
+            var currentVerticies = obj.GetAnimatedVertices();
 
             for (int i = 0; i < faceCount; i++)
             {
@@ -214,7 +230,7 @@ namespace lab1.Forms
                     int vIndex = obj.faces[i * 3 + j] - 1;
                     int nIndex = obj.normals[i * 3 + j] - 1;
 
-                    Vector3 vScreen = MathsOperations.TransformVertex(obj.Vertices[vIndex], resultMatrix);
+                    Vector3 vScreen = MathsOperations.TransformVertex(/*obj.Vertices[vIndex]*/currentVerticies[vIndex], resultMatrix);
                     if (vScreen.W == 0) vScreen.W = 1e-6f; 
 
                     verticesInViewport[j].X = vScreen.X / vScreen.W;
@@ -227,7 +243,6 @@ namespace lab1.Forms
 
                     Vector3 vNormal = MathsOperations.TransformVertex(obj.Normals[nIndex], modelMatrix);
                     vertexNormals[j] = vNormal.Normalize();
-
 
                     if (CurrentLightingMode == LightingMode.Texture)
                     {
