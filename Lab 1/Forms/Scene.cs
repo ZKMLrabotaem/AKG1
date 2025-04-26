@@ -1,24 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Data;
-using System.DirectoryServices.ActiveDirectory;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Linq;
-using System.Reflection;
-using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
 using System.Windows.Forms;
-using Aspose.ThreeD.Render;
 using lab1.MatrixOperations;
 using lab1.ParseObject;
 using lab1.Structures;
-using static System.Windows.Forms.AxHost;
 
 namespace lab1.Forms
 {
@@ -28,7 +18,7 @@ namespace lab1.Forms
         private float rotationX = 0;
         private float rotationY = 0;
         private float rotationZ = 0;
-        private float scale = 1f;
+        private float scale = 8f;
         private float translationX = 0;
         private float translationY = 0;
         private float translationZ = 0;
@@ -45,41 +35,28 @@ namespace lab1.Forms
         private Bitmap normalMap;
         private Bitmap specularMap;
 
-        BitmapData bmpData5, bmpData6, bmpData7;
+        private BitmapData bmpDataDiffuse, bmpDataNormal, bmpDataSpecular;
 
-        private const float rotationSpeed = 0.1f;
-        private const float translationSpeed = 0.3f;
-        private const float speed = 0.005f;
+        private const float RotationSpeed = 0.1f;
+        private const float TranslationSpeed = 0.3f;
+        private const float MouseWheelSpeed = 0.0005f;
         private System.Windows.Forms.Timer movementTimer;
 
-        private const string city = "Objects\\Castelia City.obj";
-        private const string head = "Objects\\scull.obj";
-        private const string plant = "Objects\\plant.obj";
-        private const string cooler = "Objects\\cooler.obj";
-        private const string shark = "Objects\\shark.obj";
-        private const string car = "Objects\\car.obj";
-        private const string eyeball = "Objects\\eyeball.obj";
-        private const string church = "Objects\\church_of_st._tiss.obj";
-        private const string fish = "Objects\\fish.obj";
-        private const string glasses = "Objects\\oculos.obj";
-        private const string moon = "Objects\\Moon 2K.obj";
-        private const string cube = "Objects\\cube.obj";
+        private const string BassObjPath = "Objects\\bass_object.obj";
+        private const string BassColorPath = "Objects\\bass_color.png";
+        private const string BassNormalsPath = "Objects\\bass_normal.png";
 
         private HashSet<Keys> pressedKeys = new HashSet<Keys>();
 
         private float[,] zBuffer;
+        private Bitmap bitmap;
 
-        Bitmap bitmap;
+        private readonly Vector3[] verticesInViewport = new Vector3[3];
+        private readonly Vector3[] verticesInWorld = new Vector3[3];
+        private readonly Vector3[] vertexNormals = new Vector3[3];
 
-        Vector3[] verticesInViewport = new Vector3[3];
-        Vector3[] verticecInWorld = new Vector3[3];
-        Vector3[] verticiesNormals = new Vector3[3];
-        Vector3 v, u, n;
-        Vector3 normal;
-        Vector3 color;
-        int vIndex, nIndex, tIndex;
-        float intensity;
         private int objectMode = 1;
+
         public enum LightingMode
         {
             Lambert,
@@ -92,51 +69,53 @@ namespace lab1.Forms
         public Scene()
         {
             InitializeComponent();
-            obj = new ObjModel(cube);
+            obj = new ObjModel(BassObjPath);
             this.KeyDown += Scene_KeyDown;
             this.KeyUp += Scene_KeyUp;
-            movementTimer = new System.Windows.Forms.Timer();
-            movementTimer.Interval = 8;
+            movementTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 8
+            };
             movementTimer.Tick += MovementTimer_Tick;
+
             rotateXMatrix = Matricies.GetRotateXMatrix(rotationX);
             rotateYMatrix = Matricies.GetRotateYMatrix(rotationY);
             rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
             scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale);
             translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ);
+
             lightDirection = lightDirection * -1;
 
-            //diffuseMap = LoadTexture("Objects\\glasses.png");
-            //diffuseMap = LoadTexture("Objects\\fish_texture.png");
-            //diffuseMap = LoadTexture("Objects\\Diffuse_2K.png");
-            diffuseMap = LoadTexture("Objects\\Снимок экрана 2025-04-18 174516.png");
-            //diffuseMap = LoadTexture("Objects\\Eye_D.jpg");
-            //normalMap = LoadTexture("Objects\\Eye_N.jpg");
-            //specularMap = LoadTexture("Objects\\REF.jpg");
-            //specularMap = LoadTexture("Objects\\Bump_2K.png");
+            diffuseMap = LoadTexture(BassColorPath);
+            //normalMap = LoadTexture(BassNormalsPath);
 
-            bmpData5 = diffuseMap.LockBits(
-                new Rectangle(0, 0, diffuseMap.Width, diffuseMap.Height),
-                ImageLockMode.ReadOnly,
-                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            if (diffuseMap != null)
+            {
+                bmpDataDiffuse = diffuseMap.LockBits(
+                    new Rectangle(0, 0, diffuseMap.Width, diffuseMap.Height),
+                    ImageLockMode.ReadOnly,
+                    System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            }
+            if (normalMap != null)
+            {
+                bmpDataNormal = normalMap.LockBits(
+                   new Rectangle(0, 0, normalMap.Width, normalMap.Height),
+                   ImageLockMode.ReadOnly,
+                   System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            }
+            if (specularMap != null)
+            {
+                bmpDataSpecular = specularMap.LockBits(
+                    new Rectangle(0, 0, specularMap.Width, specularMap.Height),
+                    ImageLockMode.ReadOnly,
+                    System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            }
 
-            bmpData6 = normalMap == null ? null : normalMap.LockBits(
-                new Rectangle(0, 0, normalMap.Width, normalMap.Height),
-                ImageLockMode.ReadOnly,
-                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-
-
-            bmpData7 = specularMap == null ? null : specularMap.LockBits(
-                new Rectangle(0, 0, specularMap.Width, specularMap.Height),
-                ImageLockMode.ReadOnly,
-                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-            update();
+            UpdateScene();
         }
         private void Scene_KeyDown(object sender, KeyEventArgs e)
         {
-            if (!pressedKeys.Contains(e.KeyCode))
-            {
-                pressedKeys.Add(e.KeyCode);
-            }
+            pressedKeys.Add(e.KeyCode);
 
             if (!movementTimer.Enabled)
             {
@@ -144,23 +123,14 @@ namespace lab1.Forms
             }
             if (e.KeyCode == Keys.L)
             {
-                CurrentLightingMode = CurrentLightingMode == LightingMode.Lambert ? LightingMode.Phong : LightingMode.Lambert;
-                update();
+                CurrentLightingMode = (LightingMode)(((int)CurrentLightingMode + 1) % Enum.GetValues(typeof(LightingMode)).Length);
+                UpdateScene();
             }
-            if (e.KeyCode == Keys.T)
-            {
-                CurrentLightingMode = CurrentLightingMode == LightingMode.Lambert ? LightingMode.Texture : LightingMode.Lambert;
-                update();
-            }
-
         }
-      
+
         private void Scene_KeyUp(object sender, KeyEventArgs e)
         {
-            if (pressedKeys.Contains(e.KeyCode))
-            {
-                pressedKeys.Remove(e.KeyCode);
-            }
+            pressedKeys.Remove(e.KeyCode);
 
             if (pressedKeys.Count == 0)
             {
@@ -171,317 +141,172 @@ namespace lab1.Forms
         private void MovementTimer_Tick(object sender, EventArgs e)
         {
             bool isCtrlPressed = (Control.ModifierKeys & Keys.Control) == Keys.Control;
-            foreach (var key in pressedKeys)
+            foreach (var key in pressedKeys.ToList()) 
             {
                 HandleKeyPress(key, isCtrlPressed);
             }
-            update();
+            UpdateScene();
         }
 
         protected override void OnMouseWheel(MouseEventArgs e)
         {
-            var moveDirection = new Vector3(0, 0, 0);
-            var scrollWheel = e.Delta;
+            var scrollAmount = e.Delta * MouseWheelSpeed;
             if (ModifierKeys.HasFlag(Keys.Alt))
             {
-                eye.X += scrollWheel * speed / 15;
-                target.X += scrollWheel * speed / 15;
-                scrollWheel *= -1;
+                eye.X += scrollAmount / 3f; 
+                target.X += scrollAmount / 3f;
             }
             else if (ModifierKeys.HasFlag(Keys.Control))
             {
-                eye.Y += scrollWheel * speed / 15;
-                target.Y = Math.Clamp(eye.Y, 0.1f, float.PositiveInfinity);
+                eye.Y += scrollAmount / 3f;
+                target.Y = Math.Max(0.1f, eye.Y);
             }
             else
             {
-                scrollWheel *= -1;
-                eye.Z += scrollWheel * speed;
-                target.Z += scrollWheel * speed;
+                eye.Z -= scrollAmount * 20f; 
+                target.Z -= scrollAmount * 20f;
             }
-            Vector3 moveOffset = moveDirection * speed * scrollWheel;
-            eye += moveOffset;
-            update();
+            UpdateScene();
         }
 
-        protected void update()
+        protected void UpdateScene()
         {
-            bitmap = new Bitmap(pictureBox1.Width, pictureBox1.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            if (bitmap == null || bitmap.Width != pictureBox1.Width || bitmap.Height != pictureBox1.Height)
+            {
+                bitmap?.Dispose();
+                bitmap = new Bitmap(pictureBox1.Width, pictureBox1.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                zBuffer = new float[pictureBox1.Width, pictureBox1.Height];
+            }
+
             ClearBitmap(bitmap);
-            zBuffer = new float[pictureBox1.Width, pictureBox1.Height];
             InitializeZBuffer();
 
-            // Model
-            // rotateZMatrx * rotateYMatrix * rotateXMatrix * scaleMatrix * translationMatrix
             modelMatrix = MathsOperations.MultipleMatrix(
                 MathsOperations.MultipleMatrix(
                     MathsOperations.MultipleMatrix(
                         MathsOperations.MultipleMatrix(
                             rotateZMatrix,
-                            rotateYMatrix
-                            ),
-                        rotateXMatrix
-                        ),
-                    scaleMatrix
-                    ),
-                translationMatrix
-                );
+                            rotateYMatrix),
+                        rotateXMatrix),
+                    scaleMatrix),
+                translationMatrix);
 
-            // View
             observerMatrix = Matricies.GetObserverMatrix(eye, target, up);
-
-            // Projection
-            projectionMatrix = Matricies.GetPerspectiveProjectionMatrix(float.Pi / 2f, bitmap.Width / (float)bitmap.Height, 1, 1000);
-
-            // Viewport
-            viewportMatrix = Matricies.GetViewingWindowMatrix(bitmap.Width, (float)bitmap.Height, 0, 0);
+            projectionMatrix = Matricies.GetPerspectiveProjectionMatrix((float)Math.PI / 2f, (float)bitmap.Width / bitmap.Height, 1f, 1000f);
+            viewportMatrix = Matricies.GetViewingWindowMatrix(bitmap.Width, bitmap.Height, 0, 0);
 
             resultMatrix = MathsOperations.MultipleMatrix(
                 MathsOperations.MultipleMatrix(
                     MathsOperations.MultipleMatrix(
                         viewportMatrix,
-                        projectionMatrix
-                        ),
-                    observerMatrix
-                    ),
-                modelMatrix
-                );
+                        projectionMatrix),
+                    observerMatrix),
+                modelMatrix);
 
-
-            int count = obj.faces.Length / 3;
+            int faceCount = obj.faces.Length / 3;
+            float[] invW = new float[3];
             Vector2 uv0 = default, uv1 = default, uv2 = default;
-            for (int i = 0; i < count; i++)
+
+            for (int i = 0; i < faceCount; i++)
             {
-                float[] invW = new float[3];
                 for (int j = 0; j < 3; j++)
                 {
-                    vIndex = obj.faces[i * 3 + j] - 1;
-                    nIndex = obj.normals[i * 3 + j] - 1;
+                    int vIndex = obj.faces[i * 3 + j] - 1;
+                    int nIndex = obj.normals[i * 3 + j] - 1;
 
-                    v = MathsOperations.TransformVertex(obj.Vertices[vIndex], resultMatrix);
+                    Vector3 vScreen = MathsOperations.TransformVertex(obj.Vertices[vIndex], resultMatrix);
+                    if (vScreen.W == 0) vScreen.W = 1e-6f; 
 
-                    Vector3 vClip = MathsOperations.TransformVertex(obj.Vertices[vIndex], resultMatrix);
-                    verticesInViewport[j].X = vClip.X / vClip.W;
-                    verticesInViewport[j].Y = vClip.Y / vClip.W;
-                    verticesInViewport[j].Z = vClip.Z / vClip.W;
+                    verticesInViewport[j].X = vScreen.X / vScreen.W;
+                    verticesInViewport[j].Y = vScreen.Y / vScreen.W;
+                    verticesInViewport[j].Z = vScreen.Z / vScreen.W;
+                    invW[j] = 1.0f / vScreen.W;
 
-                    invW[j] = 1.0f / vClip.W;
+                    Vector3 vWorld = MathsOperations.TransformVertex(obj.Vertices[vIndex], modelMatrix);
+                    verticesInWorld[j] = vWorld;
 
-                    u = MathsOperations.TransformVertex(obj.Vertices[vIndex], modelMatrix);
-                    verticecInWorld[j].X = u.X;
-                    verticecInWorld[j].Y = u.Y;
-                    verticecInWorld[j].Z = u.Z;
-
-
-                    n = MathsOperations.TransformVertex(obj.Normals[nIndex], modelMatrix);
-                    verticiesNormals[j].X = n.X;
-                    verticiesNormals[j].Y = n.Y;
-                    verticiesNormals[j].Z = n.Z;
-
+                    Vector3 vNormal = MathsOperations.TransformVertex(obj.Normals[nIndex], modelMatrix);
+                    vertexNormals[j] = vNormal.Normalize();
 
 
                     if (CurrentLightingMode == LightingMode.Texture)
                     {
                         if (obj.textures != null && obj.textures.Length > i * 3 + j)
                         {
-                            tIndex = obj.textures[i * 3 + j] - 1;
-
+                            int tIndex = obj.textures[i * 3 + j] - 1;
                             if (tIndex >= 0 && tIndex < obj.TextureVertices.Count)
                             {
-                                var uv = obj.TextureVertices[tIndex];
-                                Vector2 uvCoord = new Vector2(uv.X, uv.Y);
-
+                                var uvw = obj.TextureVertices[tIndex];
+                                Vector2 uvCoord = new Vector2(uvw.X, uvw.Y);
                                 if (j == 0) uv0 = uvCoord;
-                                if (j == 1) uv1 = uvCoord;
-                                if (j == 2) uv2 = uvCoord;
+                                else if (j == 1) uv1 = uvCoord;
+                                else uv2 = uvCoord;
                             }
-                            else
-                            {
-                                Vector2 defaultUV = new Vector2(0, 0);
-                                if (j == 0) uv0 = defaultUV;
-                                if (j == 1) uv1 = defaultUV;
-                                if (j == 2) uv2 = defaultUV;
-                            }
+                            else { if (j == 0) uv0 = Vector2.Zero(); else if (j == 1) uv1 = Vector2.Zero(); else uv2 = Vector2.Zero(); }
                         }
-                        else
-                        {
-                            Vector2 defaultUV = new Vector2(0, 0);
-                            if (j == 0) uv0 = defaultUV;
-                            if (j == 1) uv1 = defaultUV;
-                            if (j == 2) uv2 = defaultUV;
-                        }
+                        else { if (j == 0) uv0 = Vector2.Zero(); else if (j == 1) uv1 = Vector2.Zero(); else uv2 = Vector2.Zero(); }
                     }
-
-
-
                 }
-
-                normal = CalculateFaceNormal(verticecInWorld);
-
-                //if (Vector3.ScalarMultiplication(normal.Normalize(), (target.Normalize() - eye.Normalize()).Normalize()) > 0) continue;
 
                 if (CurrentLightingMode == LightingMode.Lambert)
                 {
-                    intensity = CalculateLambertIntensity(normal);
-                    color = ApplyIntensityToColor(intensity);
-                    RasterizeTriangle(bitmap, verticesInViewport[0], verticesInViewport[1], verticesInViewport[2], color);
+                    Vector3 faceNormal = CalculateFaceNormal(verticesInWorld);
+                    float intensity = CalculateLambertIntensity(faceNormal);
+                    Vector3 color = ApplyIntensityToColor(intensity);
+                    RasterizeTriangleLambert(bitmap, verticesInViewport[0], verticesInViewport[1], verticesInViewport[2], color);
                 }
                 else if (CurrentLightingMode == LightingMode.Phong)
                 {
-                    intensity = CalculatePhongIntensity(normal, verticecInWorld[0]);
-                    RasterizeTriangle(bitmap, verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
-                    verticiesNormals[0], verticiesNormals[1], verticiesNormals[2],
-                    verticecInWorld[0], verticecInWorld[1], verticecInWorld[2]);
+                    RasterizeTrianglePhong(bitmap,
+                       verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
+                       vertexNormals[0], vertexNormals[1], vertexNormals[2],
+                       verticesInWorld[0], verticesInWorld[1], verticesInWorld[2],
+                       invW[0], invW[1], invW[2]);
                 }
                 else if (CurrentLightingMode == LightingMode.Texture)
                 {
                     RasterizeTriangleTexture(bitmap,
-    verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
-    verticecInWorld[0], verticecInWorld[1], verticecInWorld[2],
-    verticiesNormals[0], verticiesNormals[1], verticiesNormals[2],
-    uv0, uv1, uv2,
-    invW[0], invW[1], invW[2],          //  <<<  новые параметры
-    diffuseMap, normalMap, specularMap);
-
+                        verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
+                        verticesInWorld[0], verticesInWorld[1], verticesInWorld[2],
+                        vertexNormals[0], vertexNormals[1], vertexNormals[2],
+                        uv0, uv1, uv2,
+                        invW[0], invW[1], invW[2]);
                 }
             }
-
             pictureBox1.Image = bitmap;
         }
 
-        Vector3 InterpolateNormal(Vector3 n0, Vector3 n1, Vector3 n2, float a, float b, float c)
-        {
-            return (n0 * a + n1 * b + n2 * c).Normalize();
-        }
-
-        Vector3 InterpolatePosition(Vector3 p0, Vector3 p1, Vector3 p2, float a, float b, float c)
-        {
-            return p0 * a + p1 * b + p2 * c;
-        }
-        Vector2 InterpolateUV(Vector2 uv0, Vector2 uv1, Vector2 uv2, float a, float b, float c)
-        {
-            return new Vector2(
-                a * uv0.X + b * uv1.X + c * uv2.X,
-                a * uv0.Y + b * uv1.Y + c * uv2.Y
-            );
-        }
-
-        Color SampleTexture(Bitmap texture, Vector2 uv)
-        {
-            int x = Math.Clamp((int)(uv.X * texture.Width), 0, texture.Width - 1);
-            int y = Math.Clamp((int)((1 - uv.Y) * texture.Height), 0, texture.Height - 1);
-            return texture.GetPixel(x, y);
-        }
-
-        Vector3 SampleNormalMap(Bitmap normalMap, Vector2 uv)
-        {
-            Color c = SampleTexture(normalMap, uv);
-            float nx = c.R / 255.0f * 2 - 1;
-            float ny = c.G / 255.0f * 2 - 1;
-            float nz = c.B / 255.0f * 2 - 1;
-            return new Vector3(nx, ny, nz);
-        }
-
-        float SampleSpecularMap(Bitmap specularMap, Vector2 uv)
-        {
-            return SampleTexture(specularMap, uv).R / 255.0f;
-        }
-
         void Barycentric(Vector3 v0, Vector3 v1, Vector3 v2, float x, float y, out float a, out float b, out float c)
-            {
-                float denom = (v1.Y - v2.Y) * (v0.X - v2.X) + (v2.X - v1.X) * (v0.Y - v2.Y);
-                a = ((v1.Y - v2.Y) * (x - v2.X) + (v2.X - v1.X) * (y - v2.Y)) / denom;
-                b = ((v2.Y - v0.Y) * (x - v2.X) + (v0.X - v2.X) * (y - v2.Y)) / denom;
-                c = 1 - a - b;
-            }
-
-        private void ClearBitmap(Bitmap bitmap)
         {
-            BitmapData bmpData = bitmap.LockBits(
-                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+            float denom = (v1.Y - v2.Y) * (v0.X - v2.X) + (v2.X - v1.X) * (v0.Y - v2.Y);
+            if (Math.Abs(denom) < 1e-6f) denom = 1e-6f;
+            a = ((v1.Y - v2.Y) * (x - v2.X) + (v2.X - v1.X) * (y - v2.Y)) / denom;
+            b = ((v2.Y - v0.Y) * (x - v2.X) + (v0.X - v2.X) * (y - v2.Y)) / denom;
+            c = 1 - a - b;
+        }
+
+        private void ClearBitmap(Bitmap bmp)
+        {
+            BitmapData bmpData = bmp.LockBits(
+                new Rectangle(0, 0, bmp.Width, bmp.Height),
                 ImageLockMode.WriteOnly,
                 System.Drawing.Imaging.PixelFormat.Format24bppRgb);
 
             unsafe
             {
                 byte* ptr = (byte*)bmpData.Scan0;
-                int bytes = bmpData.Stride * bitmap.Height;
-
-                for (int i = 0; i < bytes; i++)
-                    ptr[i] = 255;
+                int bytes = bmpData.Stride * bmp.Height;
+                for (int i = 0; i < bytes; i++) ptr[i] = 255;
             }
-
-            bitmap.UnlockBits(bmpData);
+            bmp.UnlockBits(bmpData);
         }
 
-        private void DrawLine(Bitmap bitmap, Vector3 p1, Vector3 p2, Vector3 clr)
-        {
-            BitmapData bmpData = bitmap.LockBits(
-                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
-                ImageLockMode.ReadWrite,
-                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-
-            unsafe
-            {
-                byte* ptr = (byte*)bmpData.Scan0;
-                int stride = bmpData.Stride;
-                int x1 = (int)p1.X, y1 = (int)p1.Y;
-                int x2 = (int)p2.X, y2 = (int)p2.Y;
-                int dx = Math.Abs(x2 - x1);
-                int dy = Math.Abs(y2 - y1);
-                int sx = (x1 < x2) ? 1 : -1;
-                int sy = (y1 < y2) ? 1 : -1;
-                int err = dx - dy;
-
-                while (true)
-                {
-                    if (x1 >= 0 && x1 < bitmap.Width && y1 >= 0 && y1 < bitmap.Height)
-                    {
-                        byte* pixel = ptr + y1 * stride + x1 * 3;
-                        pixel[0] = (byte)clr.Z;
-                        pixel[1] = (byte)clr.Y;
-                        pixel[2] = (byte)clr.X;
-                    }
-
-                    if (x1 == x2 && y1 == y2) break;
-
-                    int err2 = err * 2;
-                    if (err2 > -dy) { err -= dy; x1 += sx; }
-                    if (err2 < dx) { err += dx; y1 += sy; }
-                }
-            }
-
-            bitmap.UnlockBits(bmpData);
-        }
-
-        private void DrawPixel(Bitmap bitmap, int x, int y, Vector3 clr)
-        {
-
-            BitmapData bmpData = bitmap.LockBits(
-                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
-                ImageLockMode.ReadWrite,
-                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-
-            unsafe
-            {
-                byte* ptr = (byte*)bmpData.Scan0;
-                int stride = bmpData.Stride;
-
-                byte* pixel = ptr + y * stride + x * 3;
-                pixel[0] = (byte)clr.Z;
-                pixel[1] = (byte)clr.Y;
-                pixel[2] = (byte)clr.X;
-            }
-
-            bitmap.UnlockBits(bmpData);
-        }
-        public void RasterizeTriangleTexture(Bitmap bitmap,
-    Vector3 v0, Vector3 v1, Vector3 v2,          // экранные координаты
-    Vector3 p0, Vector3 p1, Vector3 p2,          // мировые координаты
-    Vector3 n0, Vector3 n1, Vector3 n2,          // нормали вершин
-    Vector2 uv0, Vector2 uv1, Vector2 uv2,       // UV
-    float invW0, float invW1, float invW2,       // 1/w
-    Bitmap diffuseMap, Bitmap normalMap, Bitmap specularMap)
+        public void RasterizeTriangleTexture(Bitmap bmp,
+            Vector3 v0, Vector3 v1, Vector3 v2,
+            Vector3 p0, Vector3 p1, Vector3 p2,
+            Vector3 n0, Vector3 n1, Vector3 n2,
+            Vector2 uv0, Vector2 uv1, Vector2 uv2,
+            float invW0, float invW1, float invW2)
         {
             Vector3[] vertices = new Vector3[] { v0, v1, v2 };
             Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
@@ -491,10 +316,10 @@ namespace lab1.Forms
             Vector3 bottom = vertices[2];
 
             int yStart = Math.Max(0, (int)Math.Ceiling(top.Y));
-            int yEnd = Math.Min(bitmap.Height - 1, (int)Math.Floor(bottom.Y));
+            int yEnd = Math.Min(bmp.Height - 1, (int)Math.Floor(bottom.Y));
 
-            BitmapData bmpData = bitmap.LockBits(
-                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+            BitmapData bmpData = bmp.LockBits(
+                new Rectangle(0, 0, bmp.Width, bmp.Height),
                 ImageLockMode.ReadWrite,
                 System.Drawing.Imaging.PixelFormat.Format24bppRgb);
 
@@ -503,138 +328,95 @@ namespace lab1.Forms
                 byte* ptr = (byte*)bmpData.Scan0;
                 int stride = bmpData.Stride;
 
-                byte* ptr5 = (byte*)bmpData5.Scan0;
-                int stride5 = bmpData5.Stride;
+                byte* ptrDiffuse = bmpDataDiffuse != null ? (byte*)bmpDataDiffuse.Scan0 : null;
+                int strideDiffuse = bmpDataDiffuse != null ? bmpDataDiffuse.Stride : 0;
 
-                byte* ptr6 = normalMap != null
-                    ? (byte*)bmpData6.Scan0
-                    : null;
-                int stride6 = normalMap != null
-                    ? bmpData6.Stride
-                    : 0;
+                byte* ptrNormal = bmpDataNormal != null ? (byte*)bmpDataNormal.Scan0 : null;
+                int strideNormal = bmpDataNormal != null ? bmpDataNormal.Stride : 0;
 
-                byte* ptr7 = specularMap != null
-                    ? (byte*)bmpData7.Scan0
-                    : null;
-                int stride7 = specularMap != null
-                    ? bmpData7.Stride
-                    : 0;
+                byte* ptrSpecular = bmpDataSpecular != null ? (byte*)bmpDataSpecular.Scan0 : null;
+                int strideSpecular = bmpDataSpecular != null ? bmpDataSpecular.Stride : 0;
+
 
                 for (int y = yStart; y <= yEnd; y++)
                 {
-                    float x1, x2;
+                    float x1 = InterpolateX(y <= middle.Y ? top : middle, y <= middle.Y ? middle : bottom, y);
+                    float x2 = InterpolateX(top, bottom, y);
 
-                    if (y <= middle.Y)
-                    {
-                        x1 = InterpolateX(top, middle, y);
-                        x2 = InterpolateX(top, bottom, y);
-                    }
-                    else
-                    {
-                        x1 = InterpolateX(middle, bottom, y);
-                        x2 = InterpolateX(top, bottom, y);
-                    }
-
-                    int xStart = (int)Math.Max(0, Math.Ceiling(Math.Min(x1, x2)));
-                    int xEnd = (int)Math.Min(bitmap.Width - 1, Math.Floor(Math.Max(x1, x2)));
-
-                    if (xStart > xEnd) continue;
+                    int xStart = Math.Max(0, (int)Math.Ceiling(Math.Min(x1, x2)));
+                    int xEnd = Math.Min(bmp.Width - 1, (int)Math.Floor(Math.Max(x1, x2)));
 
                     for (int x = xStart; x <= xEnd; x++)
                     {
                         float z = InterpolateZ(v0, v1, v2, x, y);
-
                         if (z <= zBuffer[x, y])
                         {
                             zBuffer[x, y] = z;
-
                             Barycentric(v0, v1, v2, x, y, out float α, out float β, out float γ);
 
-                            // общий вес
                             float invW = α * invW0 + β * invW1 + γ * invW2;
+                            float w = 1.0f / invW;
 
-                            // perspective correct UV
                             float u = (α * uv0.X * invW0 + β * uv1.X * invW1 + γ * uv2.X * invW2) / invW;
                             float v = (α * uv0.Y * invW0 + β * uv1.Y * invW1 + γ * uv2.Y * invW2) / invW;
                             Vector2 uv = new Vector2(u, v);
 
-                            // (по желанию) то же самое для позиции и нормали
-                            Vector3 fragPos = (
-                                  p0 * (α * invW0) +
-                                  p1 * (β * invW1) +
-                                  p2 * (γ * invW2)) / invW;
+                            Vector3 fragPos = (p0 * (α * invW0) + p1 * (β * invW1) + p2 * (γ * invW2)) * w;
 
-                            int x5 = Math.Clamp((int)(uv.X * diffuseMap.Width), 0, diffuseMap.Width - 1);
-                            int y5 = Math.Clamp((int)((1 - uv.Y) * diffuseMap.Height), 0, diffuseMap.Height - 1);
-
-                            byte* pixel5 = ptr5 + y5 * stride5 + x5 * 3;
-
-                            byte r5 = pixel5[2];
-                            byte g5 = pixel5[1];
-                            byte b5 = pixel5[0];
-
-                            Vector3 diffuseColor = new Vector3(r5, g5, b5);
+                            Vector3 diffuseColor = new Vector3(200, 200, 200); 
+                            if (ptrDiffuse != null)
+                            {
+                                int texX = Math.Clamp((int)(uv.X * diffuseMap.Width), 0, diffuseMap.Width - 1);
+                                int texY = Math.Clamp((int)((1 - uv.Y) * diffuseMap.Height), 0, diffuseMap.Height - 1);
+                                byte* pixelDiffuse = ptrDiffuse + texY * strideDiffuse + texX * 3;
+                                diffuseColor = new Vector3(pixelDiffuse[2], pixelDiffuse[1], pixelDiffuse[0]);
+                            }
 
                             Vector3 mappedNormal;
-                            if (normalMap != null)
+                            if (ptrNormal != null)
                             {
-                                int x6 = Math.Clamp((int)(uv.X * normalMap.Width), 0, normalMap.Width - 1);
-                                int y6 = Math.Clamp((int)((1 - uv.Y) * normalMap.Height), 0, normalMap.Height - 1);
-
-                                byte* pixel6 = ptr6 + y6 * stride6 + x6 * 3;
-
-                                byte r6 = pixel6[2];
-                                byte g6 = pixel6[1];
-                                byte b6 = pixel6[0];
-                                float nx = r6 / 255.0f * 2 - 1;
-                                float ny = g6 / 255.0f * 2 - 1;
-                                float nz = b6 / 255.0f * 2 - 1;
-                                mappedNormal = new Vector3(nx, ny, nz).Normalize();
+                                int texX = Math.Clamp((int)(uv.X * normalMap.Width), 0, normalMap.Width - 1);
+                                int texY = Math.Clamp((int)((1 - uv.Y) * normalMap.Height), 0, normalMap.Height - 1);
+                                byte* pixelNormal = ptrNormal + texY * strideNormal + texX * 3;
+                                mappedNormal = new Vector3(
+                                    pixelNormal[2] / 255.0f * 2 - 1,
+                                    pixelNormal[1] / 255.0f * 2 - 1,
+                                    pixelNormal[0] / 255.0f * 2 - 1).Normalize();
                             }
                             else
                             {
-                                mappedNormal = InterpolateNormal(n0, n1, n2, α, β, γ);
+                                mappedNormal = (n0 * (α * invW0) + n1 * (β * invW1) + n2 * (γ * invW2) * w).Normalize();
                             }
-                            float specularStrength;
-                            if (specularMap != null)
+
+                            float specularStrength = 0.5f;
+                            if (ptrSpecular != null)
                             {
-                                int x7 = Math.Clamp((int)(uv.X * specularMap.Width), 0, specularMap.Width - 1);
-                                int y7 = Math.Clamp((int)((1 - uv.Y) * specularMap.Height), 0, specularMap.Height - 1);
-
-                                byte* pixel7 = ptr7 + y7 * stride7 + x7 * 3;
-
-                                byte r7 = pixel7[2];
-                                byte g7 = pixel7[1];
-                                byte b7 = pixel7[0];
-                                specularStrength = b7 / 255.0f;
-                            }
-                            else
-                            {
-                                specularStrength = 0.5f;
+                                int texX = Math.Clamp((int)(uv.X * specularMap.Width), 0, specularMap.Width - 1);
+                                int texY = Math.Clamp((int)((1 - uv.Y) * specularMap.Height), 0, specularMap.Height - 1);
+                                specularStrength = (ptrSpecular + texY * strideSpecular + texX * 3)[0] / 255.0f;
                             }
 
-                            Vector3 lightDir = lightDirection.Normalize();
                             Vector3 viewDir = (eye - fragPos).Normalize();
-                            Vector3 reflectDir = (mappedNormal * 2 * Vector3.ScalarMultiplication(lightDir, mappedNormal) - lightDir).Normalize();
+                            Vector3 reflectDir = (mappedNormal * 2 * Vector3.ScalarMultiplication(lightDirection, mappedNormal) - lightDirection).Normalize();
 
-                            float NdotL = Math.Max(0, Vector3.ScalarMultiplication(mappedNormal, lightDir));
+                            float NdotL = Math.Max(0, Vector3.ScalarMultiplication(mappedNormal, lightDirection));
                             float specular = (float)Math.Pow(Math.Max(0, Vector3.ScalarMultiplication(viewDir, reflectDir)), 32) * specularStrength;
 
                             byte* pixel = ptr + y * stride + x * 3;
-                            pixel[0] = (byte)Math.Clamp((int)(diffuseColor.Z * NdotL + 255 * specular), 0, 255);
-                            pixel[1] = (byte)Math.Clamp((int)(diffuseColor.Y * NdotL + 255 * specular), 0, 255);
-                            pixel[2] = (byte)Math.Clamp((int)(diffuseColor.X * NdotL + 255 * specular), 0, 255);
+                            pixel[0] = (byte)Math.Clamp((diffuseColor.Z * NdotL + 255 * specular), 0, 255);
+                            pixel[1] = (byte)Math.Clamp((diffuseColor.Y * NdotL + 255 * specular), 0, 255);
+                            pixel[2] = (byte)Math.Clamp((diffuseColor.X * NdotL + 255 * specular), 0, 255);
                         }
                     }
                 }
             }
-
-            bitmap.UnlockBits(bmpData);
+            bmp.UnlockBits(bmpData);
         }
 
-        public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2,
+        public void RasterizeTrianglePhong(Bitmap bmp, Vector3 v0, Vector3 v1, Vector3 v2,
                               Vector3 n0, Vector3 n1, Vector3 n2,
-                              Vector3 p0, Vector3 p1, Vector3 p2)
+                              Vector3 p0, Vector3 p1, Vector3 p2,
+                              float invW0, float invW1, float invW2)
         {
             Vector3[] vertices = new Vector3[] { v0, v1, v2 };
             Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
@@ -644,53 +426,43 @@ namespace lab1.Forms
             Vector3 bottom = vertices[2];
 
             int yStart = Math.Max(0, (int)Math.Ceiling(top.Y));
-            int yEnd = Math.Min(bitmap.Height - 1, (int)Math.Floor(bottom.Y));
+            int yEnd = Math.Min(bmp.Height - 1, (int)Math.Floor(bottom.Y));
 
-            BitmapData bmpData = bitmap.LockBits(
-                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+            BitmapData bmpData = bmp.LockBits(
+                new Rectangle(0, 0, bmp.Width, bmp.Height),
                 ImageLockMode.ReadWrite,
                 System.Drawing.Imaging.PixelFormat.Format24bppRgb);
 
-            for (int y = yStart; y <= yEnd; y++)
+            unsafe
             {
-                float x1, x2;
+                byte* ptr = (byte*)bmpData.Scan0;
+                int stride = bmpData.Stride;
 
-                if (y <= middle.Y)
+                for (int y = yStart; y <= yEnd; y++)
                 {
-                    x1 = InterpolateX(top, middle, y);
-                    x2 = InterpolateX(top, bottom, y);
-                }
-                else
-                {
-                    x1 = InterpolateX(middle, bottom, y);
-                    x2 = InterpolateX(top, bottom, y);
-                }
+                    float x1 = InterpolateX(y <= middle.Y ? top : middle, y <= middle.Y ? middle : bottom, y);
+                    float x2 = InterpolateX(top, bottom, y);
 
-                int xStart = (int)Math.Max(0, Math.Ceiling(Math.Min(x1, x2)));
-                int xEnd = (int)Math.Min(bitmap.Width - 1, Math.Floor(Math.Max(x1, x2)));
+                    int xStart = Math.Max(0, (int)Math.Ceiling(Math.Min(x1, x2)));
+                    int xEnd = Math.Min(bmp.Width - 1, (int)Math.Floor(Math.Max(x1, x2)));
 
-                if (xStart > xEnd) continue;
-
-
-                for (int x = xStart; x <= xEnd; x++)
-                {
-                    float z = InterpolateZ(v0, v1, v2, x, y);
-
-                    if (z <= zBuffer[x, y])
+                    for (int x = xStart; x <= xEnd; x++)
                     {
-                        zBuffer[x, y] = z;
-                        Barycentric(v0, v1, v2, x, y, out float a, out float b, out float c);
-                        Vector3 normal = InterpolateNormal(n0, n1, n2, a, b, c);
-                        Vector3 fragPos = InterpolatePosition(p0, p1, p2, a, b, c);
-
-                        float intensity = CalculatePhongIntensity(normal, fragPos);
-                        Vector3 color = ApplyIntensityToColor(intensity);
-                        //DrawPixel(bitmap, x, y, color);
-
-                        unsafe
+                        float z = InterpolateZ(v0, v1, v2, x, y);
+                        if (z <= zBuffer[x, y])
                         {
-                            byte* ptr = (byte*)bmpData.Scan0;
-                            int stride = bmpData.Stride;
+                            zBuffer[x, y] = z;
+                            Barycentric(v0, v1, v2, x, y, out float a, out float b, out float c);
+
+                            float invW_interp = a * invW0 + b * invW1 + c * invW2;
+                            if (Math.Abs(invW_interp) < 1e-6f) invW_interp = 1e-6f;
+                            float w_interp = 1.0f / invW_interp;
+
+                            Vector3 normal = (n0 * (a * invW0) + n1 * (b * invW1) + n2 * (c * invW2) * w_interp).Normalize();
+                            Vector3 fragPos = (p0 * (a * invW0) + p1 * (b * invW1) + p2 * (c * invW2)) * w_interp;
+
+                            float intensity = CalculatePhongIntensity(normal, fragPos);
+                            Vector3 color = ApplyIntensityToColor(intensity);
 
                             byte* pixel = ptr + y * stride + x * 3;
                             pixel[0] = (byte)color.Z;
@@ -700,10 +472,9 @@ namespace lab1.Forms
                     }
                 }
             }
-
-            bitmap.UnlockBits(bmpData);
+            bmp.UnlockBits(bmpData);
         }
-        public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 color)
+        public void RasterizeTriangleLambert(Bitmap bmp, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 color)
         {
             Vector3[] vertices = new Vector3[] { v0, v1, v2 };
             Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
@@ -713,138 +484,60 @@ namespace lab1.Forms
             Vector3 bottom = vertices[2];
 
             int yStart = Math.Max(0, (int)Math.Ceiling(top.Y));
-            int yEnd = Math.Min(bitmap.Height - 1, (int)Math.Floor(bottom.Y));
+            int yEnd = Math.Min(bmp.Height - 1, (int)Math.Floor(bottom.Y));
 
-            for (int y = yStart; y <= yEnd; y++)
+            BitmapData bmpData = bmp.LockBits(
+                new Rectangle(0, 0, bmp.Width, bmp.Height),
+                ImageLockMode.ReadWrite,
+                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+            unsafe
             {
-                float x1, x2;
+                byte* basePtr = (byte*)bmpData.Scan0;
+                int stride = bmpData.Stride;
+                byte rVal = (byte)color.X;
+                byte gVal = (byte)color.Y;
+                byte bVal = (byte)color.Z;
 
-                if (y < middle.Y)
+                for (int y = yStart; y <= yEnd; y++)
                 {
-                    x1 = InterpolateX(top, middle, y);
-                    x2 = InterpolateX(top, bottom, y);
-                }
-                else
-                {
-                    x1 = InterpolateX(middle, bottom, y);
-                    x2 = InterpolateX(top, bottom, y);
-                }
+                    float x1 = InterpolateX(y <= middle.Y ? top : middle, y <= middle.Y ? middle : bottom, y);
+                    float x2 = InterpolateX(top, bottom, y);
 
-                int xStart = (int)Math.Max(0, Math.Ceiling(Math.Min(x1, x2)));
-                int xEnd = (int)Math.Min(bitmap.Width - 1, Math.Floor(Math.Max(x1, x2)));
+                    int xStart = Math.Max(0, (int)Math.Ceiling(Math.Min(x1, x2)));
+                    int xEnd = Math.Min(bmp.Width - 1, (int)Math.Floor(Math.Max(x1, x2)));
 
-                if (xStart > xEnd) continue;
-
-                bool flag = false;
-                int lastXStart = 0;
-
-                for (int x = xStart; x <= xEnd; x++)
-                {
-                    float z = InterpolateZ(v0, v1, v2, x, y);
-
-                    if (z < zBuffer[x, y])
+                    byte* rowPtr = basePtr + y * stride;
+                    for (int x = xStart; x <= xEnd; x++)
                     {
-                        zBuffer[x, y] = z;
-
-                        if (!flag)
+                        float z = InterpolateZ(v0, v1, v2, x, y);
+                        if (z < zBuffer[x, y])
                         {
-                            lastXStart = x;
-                            flag = true;
+                            zBuffer[x, y] = z;
+                            byte* pixel = rowPtr + x * 3;
+                            pixel[0] = bVal;
+                            pixel[1] = gVal;
+                            pixel[2] = rVal;
                         }
                     }
-                    else if (flag)
-                    { 
-                        DrawLine(bitmap, new Vector3(lastXStart, y, 0), new Vector3(x - 1, y, 0), color);
-                        flag = false;
-                    }
-                }
-
-                if (flag)
-                {
-                    DrawLine(bitmap, new Vector3(lastXStart, y, 0), new Vector3(xEnd, y, 0), color);
                 }
             }
+            bmp.UnlockBits(bmpData);
         }
-
-        /*public void RasterizeTriangle(Bitmap bitmap, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 color)
-        {
-            Vector3[] vertices = new Vector3[] { v0, v1, v2 };
-            Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
-
-            Vector3 top = vertices[0];
-            Vector3 middle = vertices[1];
-            Vector3 bottom = vertices[2];
-
-            int yStart = Math.Max(0, (int)Math.Ceiling(top.Y));
-            int yEnd = Math.Min(bitmap.Height - 1, (int)Math.Floor(bottom.Y));
-
-            for (int y = yStart; y <= yEnd; y++)
-            {
-                float x1, x2;
-
-                if (y < middle.Y)
-                {
-                    x1 = InterpolateX(top, middle, y);
-                    x2 = InterpolateX(top, bottom, y);
-                }
-                else
-                {
-                    x1 = InterpolateX(middle, bottom, y);
-                    x2 = InterpolateX(top, bottom, y);
-                }
-
-                int xStart = (int)Math.Max(0, Math.Ceiling(Math.Min(x1, x2)));
-                int xEnd = (int)Math.Min(bitmap.Width - 1, Math.Floor(Math.Max(x1, x2)));
-
-                if (xStart > xEnd) continue;
-
-                bool flag = false;
-                int lastXStart = 0;
-
-                for (int x = xStart; x <= xEnd; x++)
-                {
-                    float z = InterpolateZ(v0, v1, v2, x, y);
-
-                    if (z < zBuffer[x, y])
-                    {
-                        zBuffer[x, y] = z;
-
-                        if (!flag)
-                        {
-                            lastXStart = x;
-                            flag = true;
-                        }
-                    }
-                    else if (flag)
-                    {
-                        DrawLine(bitmap, new Vector3(lastXStart, y, 0), new Vector3(x - 1, y, 0), color);
-                        flag = false;
-                    }
-                }
-
-                if (flag)
-                {
-                    DrawLine(bitmap, new Vector3(lastXStart, y, 0), new Vector3(xEnd, y, 0), color);
-                }
-            }
-        }*/
 
         private float InterpolateX(Vector3 a, Vector3 b, float y)
         {
-            if (a.Y == b.Y)
-            {
-                return a.X;
-            }
+            if (Math.Abs(a.Y - b.Y) < 1e-6f) return a.X;
             return a.X + (b.X - a.X) * (y - a.Y) / (b.Y - a.Y);
         }
 
         private float InterpolateZ(Vector3 v0, Vector3 v1, Vector3 v2, float x, float y)
         {
             float denominator = (v1.Y - v2.Y) * (v0.X - v2.X) + (v2.X - v1.X) * (v0.Y - v2.Y);
+            if (Math.Abs(denominator) < 1e-6f) return float.MaxValue;
             float a = ((v1.Y - v2.Y) * (x - v2.X) + (v2.X - v1.X) * (y - v2.Y)) / denominator;
             float b = ((v2.Y - v0.Y) * (x - v2.X) + (v0.X - v2.X) * (y - v2.Y)) / denominator;
             float c = 1 - a - b;
-
             return a * v0.Z + b * v1.Z + c * v2.Z;
         }
 
@@ -862,24 +555,20 @@ namespace lab1.Forms
 
         private float CalculateLambertIntensity(Vector3 normal)
         {
-            float cosTheta = Math.Max(Vector3.ScalarMultiplication(normal, lightDirection), 0.05f);
-            cosTheta = Math.Min(cosTheta, 1);
-            return cosTheta;
+            return Math.Min(Math.Max(Vector3.ScalarMultiplication(normal, lightDirection), 0.05f), 1f);
         }
         private float CalculatePhongIntensity(Vector3 normal, Vector3 fragmentPosition)
         {
-            float ambientCoefficient = 0.1f; 
-            float diffuseCoefficient = 0.7f; 
-            float specularCoefficient = 0.2f; 
-            int shininess = 32;                
+            const float ambientCoefficient = 0.1f;
+            const float diffuseCoefficient = 0.7f;
+            const float specularCoefficient = 0.2f;
+            const int shininess = 32;
 
             Vector3 viewDirection = (eye - fragmentPosition).Normalize();
             Vector3 reflectionDirection = (normal * 2 * Vector3.ScalarMultiplication(lightDirection, normal) - lightDirection).Normalize();
 
             float ambient = ambientCoefficient;
-
             float diffuse = Math.Max(0, Vector3.ScalarMultiplication(normal, lightDirection)) * diffuseCoefficient;
-
             float specular = (float)Math.Pow(Math.Max(0, Vector3.ScalarMultiplication(viewDirection, reflectionDirection)), shininess) * specularCoefficient;
 
             return Math.Clamp(ambient + diffuse + specular, 0f, 1f);
@@ -892,126 +581,51 @@ namespace lab1.Forms
         }
         public Bitmap LoadTexture(string filePath)
         {
-            return new Bitmap(filePath);
+            try { return new Bitmap(filePath); }
+            catch { return null; }
         }
-      
-        public Color ApplyDiffuseMap(Vector3 vertex, Bitmap diffuseMap, float u, float v)
-        {
-            int texX = (int)(u * diffuseMap.Width);
-            int texY = (int)(v * diffuseMap.Height);
-            return diffuseMap.GetPixel(texX, texY);
-        }
-
-        public Vector3 ApplyNormalMap(Vector3 vertex, Bitmap normalMap, float u, float v)
-        {
-            
-            int texX = (int)(u * normalMap.Width);
-            int texY = (int)(v * normalMap.Height);
-
-            
-            Color texColor = normalMap.GetPixel(texX, texY);
-
-            
-            float nx = texColor.R / 255.0f * 2.0f - 1.0f;
-            float ny = texColor.G / 255.0f * 2.0f - 1.0f;
-            float nz = texColor.B / 255.0f * 2.0f - 1.0f;
-
-            return new Vector3(nx, ny, nz);
-        }
-
-        public float ApplySpecularMap(Vector3 vertex, Bitmap specularMap, float u, float v)
-        {
-            
-            int texX = (int)(u * specularMap.Width);
-            int texY = (int)(v * specularMap.Height);
-            
-            Color texColor = specularMap.GetPixel(texX, texY);
-
-            return texColor.R / 255.0f;
-        }
-
-        public Vector2 InterpolateWithPerspectiveCorrection(Vector2 uv0, Vector2 uv1, float z0, float z1, float t)
-        {
-            
-            float invZ0 = 1.0f / z0;
-            float invZ1 = 1.0f / z1;
-
-            float u = (1 - t) * (uv0.X * invZ0) + t * (uv1.X * invZ1);
-            float v = (1 - t) * (uv0.Y * invZ0) + t * (uv1.Y * invZ1);
-
-            return new Vector2(u, v);
-        }
-
 
         private void HandleKeyPress(Keys key, bool isControlPressed)
         {
-            switch (key)
+            float actualRotationSpeed = RotationSpeed * objectMode;
+            float actualTranslationSpeed = TranslationSpeed * objectMode;
+            float actualScaleSpeed = RotationSpeed * objectMode * 0.5f;
+
+            if (isControlPressed)
             {
-                // Повороты
-                case Keys.A:
-                    rotationY -= rotationSpeed * objectMode;
-                    rotateYMatrix = Matricies.GetRotateYMatrix(rotationY);
-                    break;
-
-                case Keys.D:
-                    rotationY += rotationSpeed * objectMode;
-                    rotateYMatrix = Matricies.GetRotateYMatrix(rotationY);
-                    break;
-
-                case Keys.W:
-                    rotationX -= rotationSpeed * objectMode;
-                    rotateXMatrix = Matricies.GetRotateXMatrix(rotationX);
-                    break;
-
-                case Keys.S:
-                    rotationX += rotationSpeed * objectMode;
-                    rotateXMatrix = Matricies.GetRotateXMatrix(rotationX);
-                    break;
-
-                case Keys.Q:
-                    rotationZ += rotationSpeed * objectMode;
-                    rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
-                    break;
-
-                case Keys.E:
-                    rotationZ -= rotationSpeed * objectMode;
-                    rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
-                    break;
-
-                // Перемещения
-                case Keys.Up:
-                    translationY += translationSpeed * objectMode;
-                    break;
-
-                case Keys.Down:
-                    translationY -= translationSpeed * objectMode;
-                    break;
-
-                case Keys.Left:
-                    if (!isControlPressed)
-                        translationX -= translationSpeed * objectMode;
-                    else
-                        translationZ -= translationSpeed * objectMode;
-                    break;
-
-                case Keys.Right:
-                    if (!isControlPressed)
-                        translationX += translationSpeed * objectMode;
-                    else
-                        translationZ += translationSpeed * objectMode;
-                    break;
-
+                switch (key)
+                {
+                    case Keys.A: lightDirection.X -= actualRotationSpeed; break;
+                    case Keys.D: lightDirection.X += actualRotationSpeed; break;
+                    case Keys.W: lightDirection.Y += actualRotationSpeed; break;
+                    case Keys.S: lightDirection.Y -= actualRotationSpeed; break;
+                    case Keys.Q: lightDirection.Z += actualRotationSpeed; break;
+                    case Keys.E: lightDirection.Z -= actualRotationSpeed; break;
+                }
+                lightDirection = lightDirection.Normalize();
             }
+            else
+            {
+                switch (key)
+                {
+                    case Keys.A: rotationY -= actualRotationSpeed; rotateYMatrix = Matricies.GetRotateYMatrix(rotationY); break;
+                    case Keys.D: rotationY += actualRotationSpeed; rotateYMatrix = Matricies.GetRotateYMatrix(rotationY); break;
+                    case Keys.W: rotationX -= actualRotationSpeed; rotateXMatrix = Matricies.GetRotateXMatrix(rotationX); break;
+                    case Keys.S: rotationX += actualRotationSpeed; rotateXMatrix = Matricies.GetRotateXMatrix(rotationX); break;
+                    case Keys.Q: rotationZ -= actualRotationSpeed; rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ); break;
+                    case Keys.E: rotationZ += actualRotationSpeed; rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ); break;
 
-            // Пересчитываем матрицы трансформации
-            translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ);
+                    case Keys.Left: translationX -= actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
+                    case Keys.Right: translationX += actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
+                    case Keys.Up: translationY += actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
+                    case Keys.Down: translationY -= actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
+                    case Keys.PageUp: translationZ += actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
+                    case Keys.PageDown: translationZ -= actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
 
-            update();
-        }
-
-        private void Scene_Resize(object sender, EventArgs e)
-        {
-            update();
+                    case Keys.Oemplus: case Keys.Add: scale += actualScaleSpeed; scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale); break;
+                    case Keys.OemMinus: case Keys.Subtract: scale -= actualScaleSpeed; scale = Math.Max(0.1f, scale); scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale); break;
+                }
+            }
         }
     }
 }

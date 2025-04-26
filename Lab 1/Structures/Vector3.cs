@@ -25,6 +25,11 @@
         return new Vector3(v.X * scalar, v.Y * scalar, v.Z * scalar, v.W * scalar);
     }
 
+    public static Vector3 Zero()
+    {
+        return new Vector3(0, 0, 0);
+    }
+
     public static Vector3 VectorMultiplication(Vector3 a, Vector3 b)
     {
         return new Vector3(

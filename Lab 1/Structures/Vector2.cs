@@ -16,5 +16,10 @@ namespace lab1.Structures
             X = x;
             Y = y;
         }
+
+        public static Vector2 Zero()
+        {
+            return new Vector2(0, 0);
+        }
     }
 }
