@@ -55,6 +55,8 @@ namespace lab1.Forms
         private readonly Vector3[] verticesInViewport = new Vector3[3];
         private readonly Vector3[] verticesInWorld = new Vector3[3];
         private readonly Vector3[] vertexNormals = new Vector3[3];
+        private float[] invW = new float[3];
+        private  Vector2 uv0 = default, uv1 = default, uv2 = default;
 
         private int objectMode = 1;
 
@@ -96,7 +98,7 @@ namespace lab1.Forms
             rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
             scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale);
             translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ);
-
+            CreateBitmap();
             lightDirection = lightDirection * -1;
 
             diffuseMap = LoadTexture(BassColorPath);
@@ -151,7 +153,26 @@ namespace lab1.Forms
                 movementTimer.Stop();
             }*/
         }
-
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            var scrollAmount = e.Delta * MouseWheelSpeed;
+            if (ModifierKeys.HasFlag(Keys.Alt))
+            {
+                eye.X += scrollAmount / 3f;
+                target.X += scrollAmount / 3f;
+            }
+            else if (ModifierKeys.HasFlag(Keys.Control))
+            {
+                eye.Y += scrollAmount / 3f;
+                target.Y = Math.Max(0.1f, eye.Y);
+            }
+            else
+            {
+                eye.Z -= scrollAmount * 20f;
+                target.Z -= scrollAmount * 20f;
+            }
+            //UpdateScene();
+        }
         private void MovementTimer_Tick(object sender, EventArgs e)
         {
             DateTime currentFrameTime = DateTime.Now;
@@ -165,7 +186,17 @@ namespace lab1.Forms
             }
             UpdateScene();
         }
+        private void Scene_Resize(object sender, EventArgs e)
+        {
+            CreateBitmap();
+        }
 
+        private void CreateBitmap()
+        {
+            bitmap?.Dispose();
+            bitmap = new Bitmap(pictureBox1.Width, pictureBox1.Height, PixelFormat.Format24bppRgb);
+            zBuffer = new float[pictureBox1.Width, pictureBox1.Height];
+        }
         private void AnimationTimer_Tick(object? sender, EventArgs e)
         {
             DateTime currentFrameTime = DateTime.Now;
@@ -175,36 +206,10 @@ namespace lab1.Forms
             //UpdateScene();
         }
 
-        protected override void OnMouseWheel(MouseEventArgs e)
-        {
-            var scrollAmount = e.Delta * MouseWheelSpeed;
-            if (ModifierKeys.HasFlag(Keys.Alt))
-            {
-                eye.X += scrollAmount / 3f; 
-                target.X += scrollAmount / 3f;
-            }
-            else if (ModifierKeys.HasFlag(Keys.Control))
-            {
-                eye.Y += scrollAmount / 3f;
-                target.Y = Math.Max(0.1f, eye.Y);
-            }
-            else
-            {
-                eye.Z -= scrollAmount * 20f; 
-                target.Z -= scrollAmount * 20f;
-            }
-            //UpdateScene();
-        }
 
         protected void UpdateScene()
         {
-            if (bitmap == null || bitmap.Width != pictureBox1.Width || bitmap.Height != pictureBox1.Height)
-            {
-                bitmap?.Dispose();
-                bitmap = new Bitmap(pictureBox1.Width, pictureBox1.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-                zBuffer = new float[pictureBox1.Width, pictureBox1.Height];
-            }
-
+ 
             ClearBitmap(bitmap);
             InitializeZBuffer();
 
@@ -231,8 +236,7 @@ namespace lab1.Forms
                 modelMatrix);
 
             int faceCount = obj.faces.Length / 3;
-            float[] invW = new float[3];
-            Vector2 uv0 = default, uv1 = default, uv2 = default;
+          
             var currentVerticies = obj.GetAnimatedVertices();
 
             for (int i = 0; i < faceCount; i++)
@@ -275,30 +279,12 @@ namespace lab1.Forms
                     }
                 }
 
-                if (CurrentLightingMode == LightingMode.Lambert)
-                {
-                    Vector3 faceNormal = CalculateFaceNormal(verticesInWorld);
-                    float intensity = CalculateLambertIntensity(faceNormal);
-                    Vector3 color = ApplyIntensityToColor(intensity);
-                    RasterizeTriangleLambert(bitmap, verticesInViewport[0], verticesInViewport[1], verticesInViewport[2], color);
-                }
-                else if (CurrentLightingMode == LightingMode.Phong)
-                {
-                    RasterizeTrianglePhong(bitmap,
-                       verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
-                       vertexNormals[0], vertexNormals[1], vertexNormals[2],
-                       verticesInWorld[0], verticesInWorld[1], verticesInWorld[2],
-                       invW[0], invW[1], invW[2]);
-                }
-                else if (CurrentLightingMode == LightingMode.Texture)
-                {
                     RasterizeTriangleTexture(bitmap,
                         verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
                         verticesInWorld[0], verticesInWorld[1], verticesInWorld[2],
                         vertexNormals[0], vertexNormals[1], vertexNormals[2],
                         uv0, uv1, uv2,
                         invW[0], invW[1], invW[2]);
-                }
             }
             pictureBox1.Image = bitmap;
         }
@@ -439,118 +425,7 @@ namespace lab1.Forms
             }
             bmp.UnlockBits(bmpData);
         }
-
-        public void RasterizeTrianglePhong(Bitmap bmp, Vector3 v0, Vector3 v1, Vector3 v2,
-                              Vector3 n0, Vector3 n1, Vector3 n2,
-                              Vector3 p0, Vector3 p1, Vector3 p2,
-                              float invW0, float invW1, float invW2)
-        {
-            Vector3[] vertices = new Vector3[] { v0, v1, v2 };
-            Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
-
-            Vector3 top = vertices[0];
-            Vector3 middle = vertices[1];
-            Vector3 bottom = vertices[2];
-
-            int yStart = Math.Max(0, (int)Math.Ceiling(top.Y));
-            int yEnd = Math.Min(bmp.Height - 1, (int)Math.Floor(bottom.Y));
-
-            BitmapData bmpData = bmp.LockBits(
-                new Rectangle(0, 0, bmp.Width, bmp.Height),
-                ImageLockMode.ReadWrite,
-                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-
-            unsafe
-            {
-                byte* ptr = (byte*)bmpData.Scan0;
-                int stride = bmpData.Stride;
-
-                for (int y = yStart; y <= yEnd; y++)
-                {
-                    float x1 = InterpolateX(y <= middle.Y ? top : middle, y <= middle.Y ? middle : bottom, y);
-                    float x2 = InterpolateX(top, bottom, y);
-
-                    int xStart = Math.Max(0, (int)Math.Ceiling(Math.Min(x1, x2)));
-                    int xEnd = Math.Min(bmp.Width - 1, (int)Math.Floor(Math.Max(x1, x2)));
-
-                    for (int x = xStart; x <= xEnd; x++)
-                    {
-                        float z = InterpolateZ(v0, v1, v2, x, y);
-                        if (z <= zBuffer[x, y])
-                        {
-                            zBuffer[x, y] = z;
-                            Barycentric(v0, v1, v2, x, y, out float a, out float b, out float c);
-
-                            float invW_interp = a * invW0 + b * invW1 + c * invW2;
-                            if (Math.Abs(invW_interp) < 1e-6f) invW_interp = 1e-6f;
-                            float w_interp = 1.0f / invW_interp;
-
-                            Vector3 normal = (n0 * (a * invW0) + n1 * (b * invW1) + n2 * (c * invW2) * w_interp).Normalize();
-                            Vector3 fragPos = (p0 * (a * invW0) + p1 * (b * invW1) + p2 * (c * invW2)) * w_interp;
-
-                            float intensity = CalculatePhongIntensity(normal, fragPos);
-                            Vector3 color = ApplyIntensityToColor(intensity);
-
-                            byte* pixel = ptr + y * stride + x * 3;
-                            pixel[0] = (byte)color.Z;
-                            pixel[1] = (byte)color.Y;
-                            pixel[2] = (byte)color.X;
-                        }
-                    }
-                }
-            }
-            bmp.UnlockBits(bmpData);
-        }
-        public void RasterizeTriangleLambert(Bitmap bmp, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 color)
-        {
-            Vector3[] vertices = new Vector3[] { v0, v1, v2 };
-            Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
-
-            Vector3 top = vertices[0];
-            Vector3 middle = vertices[1];
-            Vector3 bottom = vertices[2];
-
-            int yStart = Math.Max(0, (int)Math.Ceiling(top.Y));
-            int yEnd = Math.Min(bmp.Height - 1, (int)Math.Floor(bottom.Y));
-
-            BitmapData bmpData = bmp.LockBits(
-                new Rectangle(0, 0, bmp.Width, bmp.Height),
-                ImageLockMode.ReadWrite,
-                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-
-            unsafe
-            {
-                byte* basePtr = (byte*)bmpData.Scan0;
-                int stride = bmpData.Stride;
-                byte rVal = (byte)color.X;
-                byte gVal = (byte)color.Y;
-                byte bVal = (byte)color.Z;
-
-                for (int y = yStart; y <= yEnd; y++)
-                {
-                    float x1 = InterpolateX(y <= middle.Y ? top : middle, y <= middle.Y ? middle : bottom, y);
-                    float x2 = InterpolateX(top, bottom, y);
-
-                    int xStart = Math.Max(0, (int)Math.Ceiling(Math.Min(x1, x2)));
-                    int xEnd = Math.Min(bmp.Width - 1, (int)Math.Floor(Math.Max(x1, x2)));
-
-                    byte* rowPtr = basePtr + y * stride;
-                    for (int x = xStart; x <= xEnd; x++)
-                    {
-                        float z = InterpolateZ(v0, v1, v2, x, y);
-                        if (z < zBuffer[x, y])
-                        {
-                            zBuffer[x, y] = z;
-                            byte* pixel = rowPtr + x * 3;
-                            pixel[0] = bVal;
-                            pixel[1] = gVal;
-                            pixel[2] = rVal;
-                        }
-                    }
-                }
-            }
-            bmp.UnlockBits(bmpData);
-        }
+        
 
         private float InterpolateX(Vector3 a, Vector3 b, float y)
         {
@@ -594,22 +469,7 @@ namespace lab1.Forms
         {
             return Math.Min(Math.Max(Vector3.ScalarMultiplication(normal, lightDirection), 0.05f), 1f);
         }
-        private float CalculatePhongIntensity(Vector3 normal, Vector3 fragmentPosition)
-        {
-            const float ambientCoefficient = 0.1f;
-            const float diffuseCoefficient = 0.7f;
-            const float specularCoefficient = 0.2f;
-            const int shininess = 32;
-
-            Vector3 viewDirection = (eye - fragmentPosition).Normalize();
-            Vector3 reflectionDirection = (normal * 2 * Vector3.ScalarMultiplication(lightDirection, normal) - lightDirection).Normalize();
-
-            float ambient = ambientCoefficient;
-            float diffuse = Math.Max(0, Vector3.ScalarMultiplication(normal, lightDirection)) * diffuseCoefficient;
-            float specular = (float)Math.Pow(Math.Max(0, Vector3.ScalarMultiplication(viewDirection, reflectionDirection)), shininess) * specularCoefficient;
-
-            return Math.Clamp(ambient + diffuse + specular, 0f, 1f);
-        }
+     
 
         private Vector3 ApplyIntensityToColor(float intensity)
         {
