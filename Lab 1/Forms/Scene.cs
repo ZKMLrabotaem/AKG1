@@ -37,7 +37,7 @@ namespace lab1.Forms
 
         private BitmapData bmpDataDiffuse, bmpDataNormal, bmpDataSpecular;
 
-        private const float RotationSpeed = 0.1f;
+        private const float RotationSpeed = 2f;
         private const float TranslationSpeed = 0.3f;
         private const float MouseWheelSpeed = 0.0005f;
         private System.Windows.Forms.Timer movementTimer;
@@ -57,6 +57,10 @@ namespace lab1.Forms
         private readonly Vector3[] vertexNormals = new Vector3[3];
 
         private int objectMode = 1;
+
+        private DateTime lastFrameTime = DateTime.Now;
+        private DateTime lastAnimationUpdateTime = DateTime.Now;
+        private float deltaTime = 0;
 
         public enum LightingMode
         {
@@ -78,6 +82,7 @@ namespace lab1.Forms
                 Interval = 8
             };
             movementTimer.Tick += MovementTimer_Tick;
+            movementTimer.Start();
 
             animationTimer = new System.Windows.Forms.Timer
             {
@@ -122,12 +127,6 @@ namespace lab1.Forms
             UpdateScene();
         }
 
-        private void AnimationTimer_Tick(object? sender, EventArgs e)
-        {
-            obj.Update(animationTimer.Interval);
-            UpdateScene();
-        }
-
         private void Scene_KeyDown(object sender, KeyEventArgs e)
         {
             pressedKeys.Add(e.KeyCode);
@@ -147,20 +146,33 @@ namespace lab1.Forms
         {
             pressedKeys.Remove(e.KeyCode);
 
-            if (pressedKeys.Count == 0)
+            /*if (pressedKeys.Count == 0)
             {
                 movementTimer.Stop();
-            }
+            }*/
         }
 
         private void MovementTimer_Tick(object sender, EventArgs e)
         {
+            DateTime currentFrameTime = DateTime.Now;
+            deltaTime = (float)(currentFrameTime - lastFrameTime).TotalSeconds;
+            lastFrameTime = currentFrameTime;
+
             bool isCtrlPressed = (Control.ModifierKeys & Keys.Control) == Keys.Control;
-            foreach (var key in pressedKeys.ToList()) 
+            foreach (var key in pressedKeys.ToList())
             {
-                HandleKeyPress(key, isCtrlPressed);
+                HandleKeyPress(key, isCtrlPressed, deltaTime);
             }
             UpdateScene();
+        }
+
+        private void AnimationTimer_Tick(object? sender, EventArgs e)
+        {
+            DateTime currentFrameTime = DateTime.Now;
+            deltaTime = (float)(currentFrameTime - lastAnimationUpdateTime).TotalSeconds;
+            lastAnimationUpdateTime = currentFrameTime;
+            obj.Update(deltaTime);
+            //UpdateScene();
         }
 
         protected override void OnMouseWheel(MouseEventArgs e)
@@ -181,7 +193,7 @@ namespace lab1.Forms
                 eye.Z -= scrollAmount * 20f; 
                 target.Z -= scrollAmount * 20f;
             }
-            UpdateScene();
+            //UpdateScene();
         }
 
         protected void UpdateScene()
@@ -563,9 +575,19 @@ namespace lab1.Forms
                     zBuffer[x, y] = float.MaxValue;
         }
 
-        private Vector3 CalculateFaceNormal(Vector3[] v)
+        private Vector3 CalculateFaceNormal(Vector3[] triangleVerticesWorld)
         {
-            return Vector3.VectorMultiplication(v[1] - v[0], v[2] - v[0]).Normalize();
+            if (triangleVerticesWorld == null || triangleVerticesWorld.Length < 3)
+                return Vector3.Zero();
+
+            Vector3 v0 = triangleVerticesWorld[0];
+            Vector3 v1 = triangleVerticesWorld[1];
+            Vector3 v2 = triangleVerticesWorld[2];
+
+            Vector3 edge1 = v1 - v0;
+            Vector3 edge2 = v2 - v0;
+
+            return Vector3.VectorMultiplication(edge1, edge2).Normalize();
         }
 
         private float CalculateLambertIntensity(Vector3 normal)
@@ -600,11 +622,11 @@ namespace lab1.Forms
             catch { return null; }
         }
 
-        private void HandleKeyPress(Keys key, bool isControlPressed)
+        private void HandleKeyPress(Keys key, bool isControlPressed, float deltaTime)
         {
-            float actualRotationSpeed = RotationSpeed * objectMode;
-            float actualTranslationSpeed = TranslationSpeed * objectMode;
-            float actualScaleSpeed = RotationSpeed * objectMode * 0.5f;
+            float actualRotationSpeed = RotationSpeed * deltaTime;
+            float actualTranslationSpeed = TranslationSpeed * deltaTime;
+            float actualScaleSpeed = RotationSpeed * deltaTime * 0.5f;
 
             if (isControlPressed)
             {

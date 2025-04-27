@@ -24,16 +24,16 @@ namespace lab1.ParseObject
         private float minZ = float.MaxValue;
         private float maxTailZ = float.MinValue;
 
-        private List<Vector3> animatedVertices; // Анимированные вершины
-        private List<int> tailVerticesIndices = new List<int>();  // Индексы вершин хвоста
+        private List<Vector3> animatedVertices;
+        private List<int> tailVerticesIndices = new List<int>();  
 
-        private float amplitude = 0.3f;
-        private float frequency = 1.0f;
+        private float amplitude = 0.2f;
+        private float frequency = 3f;
         private float time = 0.0f;
 
         private List<Vector3> previousOffsets;
-        private float damping = 0.98f; // коэффициент затухания
-        private float waveSpeed = 4.0f; // скорость волны
+        private float damping = 0.98f; 
+        private float waveSpeed = 4.0f; 
 
         public ObjModel(string filePath)
         {
@@ -165,20 +165,16 @@ namespace lab1.ParseObject
                 float offsetX = amplitude * distanceFromBase *
                                 (float)Math.Sin(phase);
 
-                // Применим затухание и интерполяцию
                 Vector3 previousOffset = previousOffsets[index];
                 Vector3 targetOffset = new Vector3(offsetX, 0, 0);
                 Vector3 smoothedOffset = Vector3.Lerp(previousOffset, targetOffset, 0.2f);
                 smoothedOffset *= damping;
 
-                // Сохраняем новое смещение
                 previousOffsets[index] = smoothedOffset;
 
-                // Применяем смещение к текущей вершине
                 Vector3 vertex = animatedVertices[index];
                 vertex += smoothedOffset;
                 animatedVertices[index] = vertex;
-
             }
         }
 
