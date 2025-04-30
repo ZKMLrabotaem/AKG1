@@ -1,4 +1,5 @@
-﻿using System;
+﻿
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -6,15 +7,16 @@ using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using Lab_1.ParseObject;
 using lab1.MatrixOperations;
-using lab1.ParseObject;
+
 using lab1.Structures;
 
 namespace lab1.Forms
 {
     public partial class Scene : Form
     {
-        private ObjModel obj;
+        private BaseObject bass;
         private float rotationX = 0;
         private float rotationY = 0;
         private float rotationZ = 0;
@@ -31,21 +33,12 @@ namespace lab1.Forms
         private Vector3 up = new Vector3(0, 1, 0);
         private Vector3 lightDirection = new Vector3(-1, -1, -1).Normalize();
 
-        private Bitmap diffuseMap;
-        private Bitmap normalMap;
-        private Bitmap specularMap;
-
-        private BitmapData bmpDataDiffuse, bmpDataNormal, bmpDataSpecular;
-
         private const float RotationSpeed = 2f;
         private const float TranslationSpeed = 0.3f;
         private const float MouseWheelSpeed = 0.0005f;
         private System.Windows.Forms.Timer movementTimer;
-        private System.Windows.Forms.Timer animationTimer;
 
         private const string BassObjPath = "Objects\\bass_object.obj";
-        private const string BassColorPath = "Objects\\bass_color.png";
-        private const string BassNormalsPath = "Objects\\bass_normal.png";
 
         private HashSet<Keys> pressedKeys = new HashSet<Keys>();
 
@@ -56,9 +49,7 @@ namespace lab1.Forms
         private readonly Vector3[] verticesInWorld = new Vector3[3];
         private readonly Vector3[] vertexNormals = new Vector3[3];
         private float[] invW = new float[3];
-        private  Vector2 uv0 = default, uv1 = default, uv2 = default;
-
-        private int objectMode = 1;
+        private Vector2 uv0 = default, uv1 = default, uv2 = default;
 
         private DateTime lastFrameTime = DateTime.Now;
         private DateTime lastAnimationUpdateTime = DateTime.Now;
@@ -76,7 +67,7 @@ namespace lab1.Forms
         public Scene()
         {
             InitializeComponent();
-            obj = new ObjModel(BassObjPath);
+            bass = new Bass(BassObjPath);
             this.KeyDown += Scene_KeyDown;
             this.KeyUp += Scene_KeyUp;
             movementTimer = new System.Windows.Forms.Timer
@@ -86,13 +77,6 @@ namespace lab1.Forms
             movementTimer.Tick += MovementTimer_Tick;
             movementTimer.Start();
 
-            animationTimer = new System.Windows.Forms.Timer
-            {
-                Interval = 50
-            };
-            animationTimer.Tick += AnimationTimer_Tick;
-            animationTimer.Start();
-
             rotateXMatrix = Matricies.GetRotateXMatrix(rotationX);
             rotateYMatrix = Matricies.GetRotateYMatrix(rotationY);
             rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
@@ -101,57 +85,17 @@ namespace lab1.Forms
             CreateBitmap();
             lightDirection = lightDirection * -1;
 
-            diffuseMap = LoadTexture(BassColorPath);
-            //normalMap = LoadTexture(BassNormalsPath);
-
-            if (diffuseMap != null)
-            {
-                bmpDataDiffuse = diffuseMap.LockBits(
-                    new Rectangle(0, 0, diffuseMap.Width, diffuseMap.Height),
-                    ImageLockMode.ReadOnly,
-                    System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-            }
-            if (normalMap != null)
-            {
-                bmpDataNormal = normalMap.LockBits(
-                   new Rectangle(0, 0, normalMap.Width, normalMap.Height),
-                   ImageLockMode.ReadOnly,
-                   System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-            }
-            if (specularMap != null)
-            {
-                bmpDataSpecular = specularMap.LockBits(
-                    new Rectangle(0, 0, specularMap.Width, specularMap.Height),
-                    ImageLockMode.ReadOnly,
-                    System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-            }
-
             UpdateScene();
         }
 
         private void Scene_KeyDown(object sender, KeyEventArgs e)
         {
             pressedKeys.Add(e.KeyCode);
-
-            if (!movementTimer.Enabled)
-            {
-                movementTimer.Start();
-            }
-            if (e.KeyCode == Keys.L)
-            {
-                CurrentLightingMode = (LightingMode)(((int)CurrentLightingMode + 1) % Enum.GetValues(typeof(LightingMode)).Length);
-                UpdateScene();
-            }
         }
 
         private void Scene_KeyUp(object sender, KeyEventArgs e)
         {
             pressedKeys.Remove(e.KeyCode);
-
-            /*if (pressedKeys.Count == 0)
-            {
-                movementTimer.Stop();
-            }*/
         }
         protected override void OnMouseWheel(MouseEventArgs e)
         {
@@ -171,13 +115,14 @@ namespace lab1.Forms
                 eye.Z -= scrollAmount * 20f;
                 target.Z -= scrollAmount * 20f;
             }
-            //UpdateScene();
         }
         private void MovementTimer_Tick(object sender, EventArgs e)
         {
             DateTime currentFrameTime = DateTime.Now;
             deltaTime = (float)(currentFrameTime - lastFrameTime).TotalSeconds;
             lastFrameTime = currentFrameTime;
+
+            label1.Text = "FPS: " + float.Ceiling(1 / deltaTime);
 
             bool isCtrlPressed = (Control.ModifierKeys & Keys.Control) == Keys.Control;
             foreach (var key in pressedKeys.ToList())
@@ -197,19 +142,10 @@ namespace lab1.Forms
             bitmap = new Bitmap(pictureBox1.Width, pictureBox1.Height, PixelFormat.Format24bppRgb);
             zBuffer = new float[pictureBox1.Width, pictureBox1.Height];
         }
-        private void AnimationTimer_Tick(object? sender, EventArgs e)
-        {
-            DateTime currentFrameTime = DateTime.Now;
-            deltaTime = (float)(currentFrameTime - lastAnimationUpdateTime).TotalSeconds;
-            lastAnimationUpdateTime = currentFrameTime;
-            obj.Update(deltaTime);
-            //UpdateScene();
-        }
-
 
         protected void UpdateScene()
         {
- 
+
             ClearBitmap(bitmap);
             InitializeZBuffer();
 
@@ -235,39 +171,39 @@ namespace lab1.Forms
                     observerMatrix),
                 modelMatrix);
 
-            int faceCount = obj.faces.Length / 3;
-          
-            var currentVerticies = obj.GetAnimatedVertices();
+            int faceCount = bass.objectModel.faces.Length / 3;
+
+            var currentVerticies = bass.GetCurrentVertices();
 
             for (int i = 0; i < faceCount; i++)
             {
                 for (int j = 0; j < 3; j++)
                 {
-                    int vIndex = obj.faces[i * 3 + j] - 1;
-                    int nIndex = obj.normals[i * 3 + j] - 1;
+                    int vIndex = bass.objectModel.faces[i * 3 + j] - 1;
+                    int nIndex = bass.objectModel.normals[i * 3 + j] - 1;
 
                     Vector3 vScreen = MathsOperations.TransformVertex(/*obj.Vertices[vIndex]*/currentVerticies[vIndex], resultMatrix);
-                    if (vScreen.W == 0) vScreen.W = 1e-6f; 
+                    if (vScreen.W == 0) vScreen.W = 1e-6f;
 
                     verticesInViewport[j].X = vScreen.X / vScreen.W;
                     verticesInViewport[j].Y = vScreen.Y / vScreen.W;
                     verticesInViewport[j].Z = vScreen.Z / vScreen.W;
                     invW[j] = 1.0f / vScreen.W;
 
-                    Vector3 vWorld = MathsOperations.TransformVertex(obj.Vertices[vIndex], modelMatrix);
+                    Vector3 vWorld = MathsOperations.TransformVertex(bass.objectModel.Vertices[vIndex], modelMatrix);
                     verticesInWorld[j] = vWorld;
 
-                    Vector3 vNormal = MathsOperations.TransformVertex(obj.Normals[nIndex], modelMatrix);
+                    Vector3 vNormal = MathsOperations.TransformVertex(bass.objectModel.Normals[nIndex], modelMatrix);
                     vertexNormals[j] = vNormal.Normalize();
 
                     if (CurrentLightingMode == LightingMode.Texture)
                     {
-                        if (obj.textures != null && obj.textures.Length > i * 3 + j)
+                        if (bass.objectModel.textures != null && bass.objectModel.textures.Length > i * 3 + j)
                         {
-                            int tIndex = obj.textures[i * 3 + j] - 1;
-                            if (tIndex >= 0 && tIndex < obj.TextureVertices.Count)
+                            int tIndex = bass.objectModel.textures[i * 3 + j] - 1;
+                            if (tIndex >= 0 && tIndex < bass.objectModel.TextureVertices.Count)
                             {
-                                var uvw = obj.TextureVertices[tIndex];
+                                var uvw = bass.objectModel.TextureVertices[tIndex];
                                 Vector2 uvCoord = new Vector2(uvw.X, uvw.Y);
                                 if (j == 0) uv0 = uvCoord;
                                 else if (j == 1) uv1 = uvCoord;
@@ -279,12 +215,14 @@ namespace lab1.Forms
                     }
                 }
 
-                    RasterizeTriangleTexture(bitmap,
-                        verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
-                        verticesInWorld[0], verticesInWorld[1], verticesInWorld[2],
-                        vertexNormals[0], vertexNormals[1], vertexNormals[2],
-                        uv0, uv1, uv2,
-                        invW[0], invW[1], invW[2]);
+                RasterizeTriangleTexture(bitmap,
+                    verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
+                    verticesInWorld[0], verticesInWorld[1], verticesInWorld[2],
+                    vertexNormals[0], vertexNormals[1], vertexNormals[2],
+                    uv0, uv1, uv2,
+                    invW[0], invW[1], invW[2],
+                    bass.diffuseMap, bass.normalMap, bass.specularMap,
+                    bass.bmpDataDiffuse, bass.bmpDataNormal, bass.bmpDataSpecular);
             }
             pictureBox1.Image = bitmap;
         }
@@ -319,7 +257,9 @@ namespace lab1.Forms
             Vector3 p0, Vector3 p1, Vector3 p2,
             Vector3 n0, Vector3 n1, Vector3 n2,
             Vector2 uv0, Vector2 uv1, Vector2 uv2,
-            float invW0, float invW1, float invW2)
+            float invW0, float invW1, float invW2,
+            Bitmap diffuseMap, Bitmap normalMap, Bitmap specularMap,
+            BitmapData bmpDataDiffuse, BitmapData bmpDataNormal, BitmapData bmpDataSpecular)
         {
             Vector3[] vertices = new Vector3[] { v0, v1, v2 };
             Array.Sort(vertices, (a, b) => a.Y.CompareTo(b.Y));
@@ -376,7 +316,7 @@ namespace lab1.Forms
 
                             Vector3 fragPos = (p0 * (α * invW0) + p1 * (β * invW1) + p2 * (γ * invW2)) * w;
 
-                            Vector3 diffuseColor = new Vector3(200, 200, 200); 
+                            Vector3 diffuseColor = new Vector3(200, 200, 200);
                             if (ptrDiffuse != null)
                             {
                                 int texX = Math.Clamp((int)(uv.X * diffuseMap.Width), 0, diffuseMap.Width - 1);
@@ -425,7 +365,6 @@ namespace lab1.Forms
             }
             bmp.UnlockBits(bmpData);
         }
-        
 
         private float InterpolateX(Vector3 a, Vector3 b, float y)
         {
@@ -448,38 +387,6 @@ namespace lab1.Forms
             for (int x = 0; x < zBuffer.GetLength(0); x++)
                 for (int y = 0; y < zBuffer.GetLength(1); y++)
                     zBuffer[x, y] = float.MaxValue;
-        }
-
-        private Vector3 CalculateFaceNormal(Vector3[] triangleVerticesWorld)
-        {
-            if (triangleVerticesWorld == null || triangleVerticesWorld.Length < 3)
-                return Vector3.Zero();
-
-            Vector3 v0 = triangleVerticesWorld[0];
-            Vector3 v1 = triangleVerticesWorld[1];
-            Vector3 v2 = triangleVerticesWorld[2];
-
-            Vector3 edge1 = v1 - v0;
-            Vector3 edge2 = v2 - v0;
-
-            return Vector3.VectorMultiplication(edge1, edge2).Normalize();
-        }
-
-        private float CalculateLambertIntensity(Vector3 normal)
-        {
-            return Math.Min(Math.Max(Vector3.ScalarMultiplication(normal, lightDirection), 0.05f), 1f);
-        }
-     
-
-        private Vector3 ApplyIntensityToColor(float intensity)
-        {
-            byte intensityByte = (byte)(255 * intensity);
-            return new Vector3(intensityByte, intensityByte, intensityByte);
-        }
-        public Bitmap LoadTexture(string filePath)
-        {
-            try { return new Bitmap(filePath); }
-            catch { return null; }
         }
 
         private void HandleKeyPress(Keys key, bool isControlPressed, float deltaTime)
