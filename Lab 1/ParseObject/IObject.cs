@@ -10,5 +10,6 @@ namespace Lab_1.ParseObject
     {
         public ObjectModel objectModel { get; }
         public List<Vector3> GetCurrentVertices();
+        public float[,] GetModelMatrix();
     }
 }

@@ -165,6 +165,7 @@ namespace lab1.ParseObject
 
 
 
+using lab1.MatrixOperations;
 using System;
 using System.Collections.Generic;
 using System.Drawing.Imaging;
@@ -195,6 +196,13 @@ namespace Lab_1.ParseObject
             SetCurrentVertices();
             CreateAnimationTimer();
             LoadTextures();
+            scale = 8f;
+            SetInitialParams();
+        }
+
+        public override float[,] GetModelMatrix()
+        {
+            return MultipleModelMatrix();
         }
 
         protected override void LoadTextures()
@@ -208,6 +216,14 @@ namespace Lab_1.ParseObject
                     ImageLockMode.ReadOnly,
                     PixelFormat.Format24bppRgb);
             }
+        }
+
+        public void ChangeModelMatrix(float translationX, float transationY, float transationZ)
+        {
+            this.translationX = translationX;
+            this.translationY = transationY;
+            this.translationZ = transationZ;
+            SetInitialParams();
         }
 
         private void SetCurrentVertices()

@@ -87,4 +87,21 @@
     {
         return new Vector3(a.X/b, a.Y/b, a.Z/b);
     }
+
+    public static float Distance(Vector3 a, Vector3 b)
+    {
+        float dx = a.X - b.X;
+        float dy = a.Y - b.Y;
+        float dz = a.Z - b.Z;
+        return (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    // Квадрат расстояния для оптимизации (не вычисляет корень)
+    public static float DistanceSquared(Vector3 a, Vector3 b)
+    {
+        float dx = a.X - b.X;
+        float dy = a.Y - b.Y;
+        float dz = a.Z - b.Z;
+        return dx * dx + dy * dy + dz * dz;
+    }
 }

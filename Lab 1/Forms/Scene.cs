@@ -16,29 +16,29 @@ namespace lab1.Forms
 {
     public partial class Scene : Form
     {
-        private BaseObject bass;
-        private float rotationX = 0;
-        private float rotationY = 0;
-        private float rotationZ = 0;
-        private float scale = 8f;
-        private float translationX = 0;
-        private float translationY = 0;
-        private float translationZ = 0;
+        private Dictionary<string, string> objectsPaths = new Dictionary<string, string>
+        {
+            { "bass", "Objects\\bass_object.obj" },
+            { "algae1", "Objects\\algae_object.obj" },
+            { "algae2", "Objects\\algae_object.obj" },
+            { "algae3", "Objects\\algae_object.obj" },
+            { "algae4", "Objects\\algae_object.obj" },
+            { "sand", "Objects\\sand_object.obj" },
+        };
+        private List<BaseObject> objects = new List<BaseObject>();
+        public float[,] modelMatrix, observerMatrix, projectionMatrix, viewportMatrix, resultMatrix;
 
-        private float[,] rotateXMatrix, rotateYMatrix, rotateZMatrix, scaleMatrix, translationMatrix;
-        private float[,] modelMatrix, observerMatrix, projectionMatrix, viewportMatrix, resultMatrix;
-
-        private Vector3 eye = new Vector3(0, 0, 5);
+        private Vector3 eye = new Vector3(0, 0, 20);
         private Vector3 target = new Vector3(0, 0, 0);
         private Vector3 up = new Vector3(0, 1, 0);
-        private Vector3 lightDirection = new Vector3(-1, -1, -1).Normalize();
+
+        // 0.0964412242f, -0.870733261f, 0.482206136f, -1.20551527f
+        private Vector3 lightDirection = new Vector3(0.0964412242f, -0.870733261f, 0.482206136f, -1.20551527f).Normalize();
 
         private const float RotationSpeed = 2f;
         private const float TranslationSpeed = 0.3f;
         private const float MouseWheelSpeed = 0.0005f;
         private System.Windows.Forms.Timer movementTimer;
-
-        private const string BassObjPath = "Objects\\bass_object.obj";
 
         private HashSet<Keys> pressedKeys = new HashSet<Keys>();
 
@@ -55,6 +55,8 @@ namespace lab1.Forms
         private DateTime lastAnimationUpdateTime = DateTime.Now;
         private float deltaTime = 0;
 
+        private float nearPlaneDistance = 1.0f;
+
         public enum LightingMode
         {
             Lambert,
@@ -67,7 +69,30 @@ namespace lab1.Forms
         public Scene()
         {
             InitializeComponent();
-            bass = new Bass(BassObjPath);
+            foreach (var path in objectsPaths)
+            {
+                switch (path.Key)
+                {
+                    case "bass": objects.Add(new Bass(path.Value)); break;
+                    case "algae1": 
+                        objects.Add(new Algae(path.Value));
+                        (objects.LastOrDefault() as Algae).ChangeModelMatrix(-7.3f, -8f, -7.5f);
+                        break;
+                    case "algae2":
+                        objects.Add(new Algae(path.Value));
+                        (objects.LastOrDefault() as Algae).ChangeModelMatrix(7.3f, -8.8f, -7.5f);
+                        break;
+                    case "algae3":
+                        objects.Add(new Algae(path.Value));
+                        (objects.LastOrDefault() as Algae).ChangeModelMatrix(7.3f, -7.5f, 7.5f);
+                        break;
+                    case "algae4":
+                        objects.Add(new Algae(path.Value));
+                        (objects.LastOrDefault() as Algae).ChangeModelMatrix(-7.3f, -6.6f, 7.5f);
+                        break;
+                    case "sand": objects.Add(new Sand(path.Value)); break;
+                }
+            }
             this.KeyDown += Scene_KeyDown;
             this.KeyUp += Scene_KeyUp;
             movementTimer = new System.Windows.Forms.Timer
@@ -77,13 +102,8 @@ namespace lab1.Forms
             movementTimer.Tick += MovementTimer_Tick;
             movementTimer.Start();
 
-            rotateXMatrix = Matricies.GetRotateXMatrix(rotationX);
-            rotateYMatrix = Matricies.GetRotateYMatrix(rotationY);
-            rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ);
-            scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale);
-            translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ);
             CreateBitmap();
-            lightDirection = lightDirection * -1;
+            //lightDirection = lightDirection * -1;
 
             UpdateScene();
         }
@@ -145,85 +165,90 @@ namespace lab1.Forms
 
         protected void UpdateScene()
         {
-
             ClearBitmap(bitmap);
             InitializeZBuffer();
-
-            modelMatrix = MathsOperations.MultipleMatrix(
-                MathsOperations.MultipleMatrix(
-                    MathsOperations.MultipleMatrix(
-                        MathsOperations.MultipleMatrix(
-                            rotateZMatrix,
-                            rotateYMatrix),
-                        rotateXMatrix),
-                    scaleMatrix),
-                translationMatrix);
 
             observerMatrix = Matricies.GetObserverMatrix(eye, target, up);
             projectionMatrix = Matricies.GetPerspectiveProjectionMatrix((float)Math.PI / 2f, (float)bitmap.Width / bitmap.Height, 1f, 1000f);
             viewportMatrix = Matricies.GetViewingWindowMatrix(bitmap.Width, bitmap.Height, 0, 0);
 
-            resultMatrix = MathsOperations.MultipleMatrix(
-                MathsOperations.MultipleMatrix(
-                    MathsOperations.MultipleMatrix(
-                        viewportMatrix,
-                        projectionMatrix),
-                    observerMatrix),
-                modelMatrix);
-
-            int faceCount = bass.objectModel.faces.Length / 3;
-
-            var currentVerticies = bass.GetCurrentVertices();
-
-            for (int i = 0; i < faceCount; i++)
+            for (int i = 0; i < objects.Count; i++)
             {
-                for (int j = 0; j < 3; j++)
+                var obj = objects[i];
+                Vector3 objPosition = new Vector3(obj.translationX, obj.translationY, obj.translationZ);
+
+                int faceCount = obj.objectModel.faces.Length / 3;
+                var currentVerticies = obj.GetCurrentVertices();
+
+                float[,] modelMatrix = obj.GetModelMatrix();
+
+                resultMatrix = MathsOperations.MultipleMatrix(
+                    MathsOperations.MultipleMatrix(
+                        MathsOperations.MultipleMatrix(
+                            viewportMatrix,
+                            projectionMatrix),
+                        observerMatrix),
+                    modelMatrix);
+
+                for (int j = 0; j < faceCount; j++)
                 {
-                    int vIndex = bass.objectModel.faces[i * 3 + j] - 1;
-                    int nIndex = bass.objectModel.normals[i * 3 + j] - 1;
-
-                    Vector3 vScreen = MathsOperations.TransformVertex(/*obj.Vertices[vIndex]*/currentVerticies[vIndex], resultMatrix);
-                    if (vScreen.W == 0) vScreen.W = 1e-6f;
-
-                    verticesInViewport[j].X = vScreen.X / vScreen.W;
-                    verticesInViewport[j].Y = vScreen.Y / vScreen.W;
-                    verticesInViewport[j].Z = vScreen.Z / vScreen.W;
-                    invW[j] = 1.0f / vScreen.W;
-
-                    Vector3 vWorld = MathsOperations.TransformVertex(bass.objectModel.Vertices[vIndex], modelMatrix);
-                    verticesInWorld[j] = vWorld;
-
-                    Vector3 vNormal = MathsOperations.TransformVertex(bass.objectModel.Normals[nIndex], modelMatrix);
-                    vertexNormals[j] = vNormal.Normalize();
-
-                    if (CurrentLightingMode == LightingMode.Texture)
+                    Vector3[] verticesInView = new Vector3[3];
+                    for (int k = 0; k < 3; k++)
                     {
-                        if (bass.objectModel.textures != null && bass.objectModel.textures.Length > i * 3 + j)
-                        {
-                            int tIndex = bass.objectModel.textures[i * 3 + j] - 1;
-                            if (tIndex >= 0 && tIndex < bass.objectModel.TextureVertices.Count)
-                            {
-                                var uvw = bass.objectModel.TextureVertices[tIndex];
-                                Vector2 uvCoord = new Vector2(uvw.X, uvw.Y);
-                                if (j == 0) uv0 = uvCoord;
-                                else if (j == 1) uv1 = uvCoord;
-                                else uv2 = uvCoord;
-                            }
-                            else { if (j == 0) uv0 = Vector2.Zero(); else if (j == 1) uv1 = Vector2.Zero(); else uv2 = Vector2.Zero(); }
-                        }
-                        else { if (j == 0) uv0 = Vector2.Zero(); else if (j == 1) uv1 = Vector2.Zero(); else uv2 = Vector2.Zero(); }
-                    }
-                }
+                        int vIndex = obj.objectModel.faces[j * 3 + k] - 1;
+                        int nIndex = obj.objectModel.normals[j * 3 + k] - 1;
 
-                RasterizeTriangleTexture(bitmap,
-                    verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
-                    verticesInWorld[0], verticesInWorld[1], verticesInWorld[2],
-                    vertexNormals[0], vertexNormals[1], vertexNormals[2],
-                    uv0, uv1, uv2,
-                    invW[0], invW[1], invW[2],
-                    bass.diffuseMap, bass.normalMap, bass.specularMap,
-                    bass.bmpDataDiffuse, bass.bmpDataNormal, bass.bmpDataSpecular);
+                        Vector3 vScreen = MathsOperations.TransformVertex(currentVerticies[vIndex], resultMatrix);
+                        if (vScreen.W == 0) vScreen.W = 1e-6f;
+
+                        verticesInViewport[k].X = vScreen.X / vScreen.W;
+                        verticesInViewport[k].Y = vScreen.Y / vScreen.W;
+                        verticesInViewport[k].Z = vScreen.Z / vScreen.W;
+                        invW[k] = 1.0f / vScreen.W;
+
+                        Vector3 vWorld = MathsOperations.TransformVertex(obj.objectModel.Vertices[vIndex], modelMatrix);
+                        verticesInWorld[k] = vWorld;
+
+                        Vector3 vNormal = MathsOperations.TransformVertex(obj.objectModel.Normals[nIndex % obj.objectModel.Normals.Count], modelMatrix);
+                        vertexNormals[k] = vNormal.Normalize();
+
+                        verticesInView[k] = MathsOperations.TransformVertex(vWorld, observerMatrix);
+
+                        if (CurrentLightingMode == LightingMode.Texture)
+                        {
+                            if (obj.objectModel.textures != null && obj.objectModel.textures.Length > j * 3 + k)
+                            {
+                                int tIndex = obj.objectModel.textures[j * 3 + k] - 1;
+                                if (tIndex >= 0 && tIndex < obj.objectModel.TextureVertices.Count)
+                                {
+                                    var uvw = obj.objectModel.TextureVertices[tIndex];
+                                    Vector2 uvCoord = new Vector2(uvw.X, uvw.Y);
+                                    if (k == 0) uv0 = uvCoord;
+                                    else if (k == 1) uv1 = uvCoord;
+                                    else uv2 = uvCoord;
+                                }
+                                else { if (k == 0) uv0 = Vector2.Zero(); else if (k == 1) uv1 = Vector2.Zero(); else uv2 = Vector2.Zero(); }
+                            }
+                            else { if (k == 0) uv0 = Vector2.Zero(); else if (k == 1) uv1 = Vector2.Zero(); else uv2 = Vector2.Zero(); }
+                        }
+                    }
+
+                    if (verticesInView[0].Z > -nearPlaneDistance &&
+                        verticesInView[1].Z > -nearPlaneDistance &&
+                        verticesInView[2].Z > -nearPlaneDistance)
+                        continue;
+
+                    RasterizeTriangleTexture(bitmap,
+                        verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
+                        verticesInWorld[0], verticesInWorld[1], verticesInWorld[2], 
+                        vertexNormals[0], vertexNormals[1], vertexNormals[2],     
+                        uv0, uv1, uv2,
+                        invW[0], invW[1], invW[2], 
+                        obj.diffuseMap, obj.normalMap, obj.specularMap,
+                        obj.bmpDataDiffuse, obj.bmpDataNormal, obj.bmpDataSpecular);
+                }
             }
+
             pictureBox1.Image = bitmap;
         }
 
@@ -410,24 +435,84 @@ namespace lab1.Forms
             }
             else
             {
-                switch (key)
+                if (objects.Count > 0)
                 {
-                    case Keys.A: rotationY -= actualRotationSpeed; rotateYMatrix = Matricies.GetRotateYMatrix(rotationY); break;
-                    case Keys.D: rotationY += actualRotationSpeed; rotateYMatrix = Matricies.GetRotateYMatrix(rotationY); break;
-                    case Keys.W: rotationX -= actualRotationSpeed; rotateXMatrix = Matricies.GetRotateXMatrix(rotationX); break;
-                    case Keys.S: rotationX += actualRotationSpeed; rotateXMatrix = Matricies.GetRotateXMatrix(rotationX); break;
-                    case Keys.Q: rotationZ -= actualRotationSpeed; rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ); break;
-                    case Keys.E: rotationZ += actualRotationSpeed; rotateZMatrix = Matricies.GetRotateZMatrix(rotationZ); break;
+                    switch (key)
+                    {
+                        case Keys.A: 
+                            objects[0].rotationY -= actualRotationSpeed;
+                            objects[1].rotationY -= actualRotationSpeed;
+                            objects[2].rotationY -= actualRotationSpeed;
+                            objects[3].rotationY -= actualRotationSpeed;
+                            objects[4].rotationY -= actualRotationSpeed;
+                            objects[5].rotationY -= actualRotationSpeed; break;
+                        case Keys.D: 
+                            objects[0].rotationY += actualRotationSpeed;
+                            /*objects[1].rotationY += actualRotationSpeed;
+                            objects[2].rotationY += actualRotationSpeed;
+                            objects[3].rotationY += actualRotationSpeed;
+                            objects[4].rotationY += actualRotationSpeed;
+                            objects[5].rotationY += actualRotationSpeed;*/ break;
+                        case Keys.W:
+                            objects[0].rotationX -= actualRotationSpeed;
+                            /*objects[1].rotationX -= actualRotationSpeed;
+                            objects[2].rotationX -= actualRotationSpeed;
+                            objects[3].rotationX -= actualRotationSpeed;
+                            objects[4].rotationX -= actualRotationSpeed;
+                            objects[5].rotationX -= actualRotationSpeed;*/ break;
+                        case Keys.S: 
+                            objects[0].rotationX += actualRotationSpeed;
+                            /*objects[1].rotationX += actualRotationSpeed;
+                            objects[2].rotationX += actualRotationSpeed;
+                            objects[3].rotationX += actualRotationSpeed;
+                            objects[4].rotationX += actualRotationSpeed;
+                            objects[5].rotationX += actualRotationSpeed;*/ break;
+                        case Keys.Q: 
+                            objects[0].rotationZ -= actualRotationSpeed;
+                            /*objects[1].rotationZ -= actualRotationSpeed;
+                            objects[2].rotationZ -= actualRotationSpeed;
+                            objects[3].rotationZ -= actualRotationSpeed;
+                            objects[4].rotationZ -= actualRotationSpeed;
+                            objects[5].rotationZ -= actualRotationSpeed;*/ break;
+                        case Keys.E: 
+                            objects[0].rotationZ += actualRotationSpeed;
+                            /*objects[1].rotationZ += actualRotationSpeed;
+                            objects[2].rotationZ += actualRotationSpeed;
+                            objects[3].rotationZ += actualRotationSpeed;
+                            objects[4].rotationZ += actualRotationSpeed;
+                            objects[5].rotationZ += actualRotationSpeed;*/ break;
 
-                    case Keys.Left: translationX -= actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
-                    case Keys.Right: translationX += actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
-                    case Keys.Up: translationY += actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
-                    case Keys.Down: translationY -= actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
-                    case Keys.PageUp: translationZ += actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
-                    case Keys.PageDown: translationZ -= actualTranslationSpeed; translationMatrix = Matricies.GetTranslationMatrix(translationX, translationY, translationZ); break;
+                        case Keys.Left: objects[0].translationX -= actualTranslationSpeed; break;
+                        case Keys.Right: objects[0].translationX += actualTranslationSpeed; break;
+                        case Keys.Up: objects[0].translationY += actualTranslationSpeed; break;
+                        case Keys.Down: objects[0].translationY -= actualTranslationSpeed; break;
+                        case Keys.PageUp: objects[0].translationZ += actualTranslationSpeed; break;
+                        case Keys.PageDown: objects[0].translationZ -= actualTranslationSpeed; break;
 
-                    case Keys.Oemplus: case Keys.Add: scale += actualScaleSpeed; scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale); break;
-                    case Keys.OemMinus: case Keys.Subtract: scale -= actualScaleSpeed; scale = Math.Max(0.1f, scale); scaleMatrix = Matricies.GetScaleMatrix(scale, scale, scale); break;
+                        case Keys.Oemplus: case Keys.Add: objects[0].scale += actualScaleSpeed; break;
+                        case Keys.OemMinus: case Keys.Subtract: objects[0].scale -= actualScaleSpeed; objects[0].scale = Math.Max(0.1f, objects[0].scale); break;
+                    }
+
+                    objects[0].rotateYMatrix = Matricies.GetRotateYMatrix(objects[0].rotationY);
+                    /*objects[1].rotateYMatrix = Matricies.GetRotateYMatrix(objects[1].rotationY);
+                    objects[2].rotateYMatrix = Matricies.GetRotateYMatrix(objects[2].rotationY);
+                    objects[3].rotateYMatrix = Matricies.GetRotateYMatrix(objects[2].rotationY);
+                    objects[4].rotateYMatrix = Matricies.GetRotateYMatrix(objects[2].rotationY);
+                    objects[5].rotateYMatrix = Matricies.GetRotateYMatrix(objects[2].rotationY);*/
+                    objects[0].rotateXMatrix = Matricies.GetRotateXMatrix(objects[0].rotationX);
+                    /*objects[1].rotateXMatrix = Matricies.GetRotateXMatrix(objects[1].rotationX);
+                    objects[2].rotateXMatrix = Matricies.GetRotateXMatrix(objects[2].rotationX);
+                    objects[3].rotateXMatrix = Matricies.GetRotateXMatrix(objects[2].rotationX);
+                    objects[4].rotateXMatrix = Matricies.GetRotateXMatrix(objects[2].rotationX);
+                    objects[5].rotateXMatrix = Matricies.GetRotateXMatrix(objects[2].rotationX);*/
+                    objects[0].rotateZMatrix = Matricies.GetRotateZMatrix(objects[0].rotationZ);
+                    /*objects[1].rotateZMatrix = Matricies.GetRotateZMatrix(objects[1].rotationZ);
+                    objects[2].rotateZMatrix = Matricies.GetRotateZMatrix(objects[2].rotationZ);
+                    objects[3].rotateZMatrix = Matricies.GetRotateZMatrix(objects[2].rotationZ);
+                    objects[4].rotateZMatrix = Matricies.GetRotateZMatrix(objects[2].rotationZ);
+                    objects[5].rotateZMatrix = Matricies.GetRotateZMatrix(objects[2].rotationZ);*/
+                    objects[0].scaleMatrix = Matricies.GetScaleMatrix(objects[0].scale, objects[0].scale, objects[0].scale);
+                    objects[0].translationMatrix = Matricies.GetTranslationMatrix(objects[0].translationX, objects[0].translationY, objects[0].translationZ);
                 }
             }
         }

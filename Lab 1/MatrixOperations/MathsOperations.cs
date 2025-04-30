@@ -35,6 +35,21 @@ namespace lab1.MatrixOperations
             result[3] = transformationMatrix[3, 0] * vertex.X + transformationMatrix[3, 1] * vertex.Y + transformationMatrix[3, 2] * vertex.Z + transformationMatrix[3, 3];
             return new Vector3(result[0], result[1], result[2], result[3]);
         }
+
+        public static Vector3 TransformVertexNoPerspective(Vector3 vertex, float[,] matrix)
+        {
+            float x = vertex.X;
+            float y = vertex.Y;
+            float z = vertex.Z;
+
+            float w = matrix[0, 3] * x + matrix[1, 3] * y + matrix[2, 3] * z + matrix[3, 3];
+
+            return new Vector3(
+                matrix[0, 0] * x + matrix[1, 0] * y + matrix[2, 0] * z + matrix[3, 0],
+                matrix[0, 1] * x + matrix[1, 1] * y + matrix[2, 1] * z + matrix[3, 1],
+                matrix[0, 2] * x + matrix[1, 2] * y + matrix[2, 2] * z + matrix[3, 2]
+            );
+        }
     }
 
 }
