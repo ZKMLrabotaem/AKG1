@@ -60,6 +60,10 @@ namespace lab1.Forms
         private float deltaTime = 0;
 
         private float nearPlaneDistance = 1.0f;
+        struct PixelData
+        {
+            public byte R, G, B;
+        }
 
         public enum LightingMode
         {
@@ -174,88 +178,159 @@ namespace lab1.Forms
             observerMatrix = Matricies.GetObserverMatrix(eye, target, up);
             projectionMatrix = Matricies.GetPerspectiveProjectionMatrix((float)Math.PI / 2f, (float)bitmap.Width / bitmap.Height, 1f, 1000f);
             viewportMatrix = Matricies.GetViewingWindowMatrix(bitmap.Width, bitmap.Height, 0, 0);
+            int width = bitmap.Width;
+            int height = bitmap.Height;
 
-            for (int i = 0; i < objects.Count; i++)
+            var buffers = new RenderBuffer[6];
+            for (int i = 0; i < 6; i++)
+                buffers[i] = new RenderBuffer(width, height);
+
+            var tasks = new List<Task>();
+
+            int countPerThread = (int)Math.Ceiling(objects.Count / 6.0);
+
+            for (int i = 0; i < 6; i++)
             {
-                var obj = objects[i];
-                float[,] modelMatrix = obj.GetModelMatrix();
-                float[,] modelMatrixInverseTranspose = MathsOperations.InverseTransposeMatrix(modelMatrix);
+                int start = i * countPerThread;
+                int end = Math.Min(start + countPerThread, objects.Count);
+                int index = i;
 
-                int faceCount = obj.objectModel.faces.Length / 3;
-                var currentVerticies = obj.GetCurrentVertices();
-
-                resultMatrix = MathsOperations.MultipleMatrix(
-                    MathsOperations.MultipleMatrix(
-                        MathsOperations.MultipleMatrix(
-                            viewportMatrix,
-                            projectionMatrix),
-                        observerMatrix),
-                    modelMatrix);
-
-                for (int j = 0; j < faceCount; j++)
+                tasks.Add(Task.Run(() =>
                 {
-                    Vector3[] verticesInView = new Vector3[3];
-                    for (int k = 0; k < 3; k++)
+                    for (int j = start; j < end; j++)
+                        DrawObject(objects[j], buffers[index]);
+                }));
+            }
+
+            Task.WhenAll(tasks).Wait();
+
+            AssembleBitmap(buffers);
+            pictureBox1.Image = bitmap;
+        }
+        private void DrawObject(BaseObject obj, RenderBuffer buffer)
+        {
+
+            
+            float[,] modelMatrix = obj.GetModelMatrix();
+            float[,] modelMatrixInverseTranspose = MathsOperations.InverseTransposeMatrix(modelMatrix);
+
+            int faceCount = obj.objectModel.faces.Length / 3;
+            var currentVerticies = obj.GetCurrentVertices();
+
+            resultMatrix = MathsOperations.MultipleMatrix(
+                MathsOperations.MultipleMatrix(
+                    MathsOperations.MultipleMatrix(
+                        viewportMatrix,
+                        projectionMatrix),
+                    observerMatrix),
+                modelMatrix);
+
+            for (int j = 0; j < faceCount; j++)
+            {
+                Vector3[] verticesInView = new Vector3[3];
+                for (int k = 0; k < 3; k++)
+                {
+                    int vIndex = obj.objectModel.faces[j * 3 + k] - 1;
+                    int nIndex = obj.objectModel.normals[j * 3 + k] - 1;
+
+                    Vector3 vScreen = MathsOperations.TransformVertex(currentVerticies[vIndex], resultMatrix);
+                    if (vScreen.W == 0) vScreen.W = 1e-6f;
+
+                    verticesInViewport[k].X = vScreen.X / vScreen.W;
+                    verticesInViewport[k].Y = vScreen.Y / vScreen.W;
+                    verticesInViewport[k].Z = vScreen.Z / vScreen.W;
+                    invW[k] = 1.0f / vScreen.W;
+
+                    Vector3 vWorld = MathsOperations.TransformVertex(obj.objectModel.Vertices[vIndex], modelMatrix);
+                    verticesInWorld[k] = vWorld;
+
+                    Vector3 originalNormal = obj.objectModel.Normals[nIndex % obj.objectModel.Normals.Count];
+                    Vector3 vNormal = MathsOperations.TransformVertex(originalNormal, modelMatrixInverseTranspose);
+                    vertexNormals[k] = vNormal.Normalize();
+
+                    verticesInView[k] = MathsOperations.TransformVertex(vWorld, observerMatrix);
+
+                    if (CurrentLightingMode == LightingMode.Texture)
                     {
-                        int vIndex = obj.objectModel.faces[j * 3 + k] - 1;
-                        int nIndex = obj.objectModel.normals[j * 3 + k] - 1;
-
-                        Vector3 vScreen = MathsOperations.TransformVertex(currentVerticies[vIndex], resultMatrix);
-                        if (vScreen.W == 0) vScreen.W = 1e-6f;
-
-                        verticesInViewport[k].X = vScreen.X / vScreen.W;
-                        verticesInViewport[k].Y = vScreen.Y / vScreen.W;
-                        verticesInViewport[k].Z = vScreen.Z / vScreen.W;
-                        invW[k] = 1.0f / vScreen.W;
-
-                        Vector3 vWorld = MathsOperations.TransformVertex(obj.objectModel.Vertices[vIndex], modelMatrix);
-                        verticesInWorld[k] = vWorld;
-
-                        Vector3 originalNormal = obj.objectModel.Normals[nIndex % obj.objectModel.Normals.Count];
-                        Vector3 vNormal = MathsOperations.TransformVertex(originalNormal, modelMatrixInverseTranspose);
-                        vertexNormals[k] = vNormal.Normalize();
-
-                        verticesInView[k] = MathsOperations.TransformVertex(vWorld, observerMatrix);
-
-                        if (CurrentLightingMode == LightingMode.Texture)
+                        if (obj.objectModel.textures != null && obj.objectModel.textures.Length > j * 3 + k)
                         {
-                            if (obj.objectModel.textures != null && obj.objectModel.textures.Length > j * 3 + k)
+                            int tIndex = obj.objectModel.textures[j * 3 + k] - 1;
+                            if (tIndex >= 0 && tIndex < obj.objectModel.TextureVertices.Count)
                             {
-                                int tIndex = obj.objectModel.textures[j * 3 + k] - 1;
-                                if (tIndex >= 0 && tIndex < obj.objectModel.TextureVertices.Count)
-                                {
-                                    var uvw = obj.objectModel.TextureVertices[tIndex];
-                                    Vector2 uvCoord = new Vector2(uvw.X, uvw.Y);
-                                    if (k == 0) uv0 = uvCoord;
-                                    else if (k == 1) uv1 = uvCoord;
-                                    else uv2 = uvCoord;
-                                }
-                                else { if (k == 0) uv0 = Vector2.Zero(); else if (k == 1) uv1 = Vector2.Zero(); else uv2 = Vector2.Zero(); }
+                                var uvw = obj.objectModel.TextureVertices[tIndex];
+                                Vector2 uvCoord = new Vector2(uvw.X, uvw.Y);
+                                if (k == 0) uv0 = uvCoord;
+                                else if (k == 1) uv1 = uvCoord;
+                                else uv2 = uvCoord;
                             }
                             else { if (k == 0) uv0 = Vector2.Zero(); else if (k == 1) uv1 = Vector2.Zero(); else uv2 = Vector2.Zero(); }
                         }
+                        else { if (k == 0) uv0 = Vector2.Zero(); else if (k == 1) uv1 = Vector2.Zero(); else uv2 = Vector2.Zero(); }
                     }
+                }
 
-                    if (verticesInView[0].Z > -nearPlaneDistance &&
-                        verticesInView[1].Z > -nearPlaneDistance &&
-                        verticesInView[2].Z > -nearPlaneDistance)
-                        continue;
+                if (verticesInView[0].Z > -nearPlaneDistance &&
+                    verticesInView[1].Z > -nearPlaneDistance &&
+                    verticesInView[2].Z > -nearPlaneDistance)
+                    continue;
 
-                    RasterizeTriangleTexture(bitmap,
-                        verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
-                        verticesInWorld[0], verticesInWorld[1], verticesInWorld[2],
-                        vertexNormals[0], vertexNormals[1], vertexNormals[2],
-                        uv0, uv1, uv2,
-                        invW[0], invW[1], invW[2],
-                        obj.diffuseMap, obj.normalMap, obj.specularMap,
-                        obj.bmpDataDiffuse, obj.bmpDataNormal, obj.bmpDataSpecular);
+                RasterizeTriangleTexture(buffer,
+                    verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
+                    verticesInWorld[0], verticesInWorld[1], verticesInWorld[2],
+                    vertexNormals[0], vertexNormals[1], vertexNormals[2],
+                    uv0, uv1, uv2,
+                    invW[0], invW[1], invW[2],
+                    obj.diffuseMap, obj.normalMap, obj.specularMap,
+                    obj.bmpDataDiffuse, obj.bmpDataNormal, obj.bmpDataSpecular);
+            }
+        }
+        private void AssembleBitmap(RenderBuffer[] buffers)
+        {
+            BitmapData data = bitmap.LockBits(
+                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                ImageLockMode.WriteOnly,
+                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+
+            int stride = data.Stride;
+            int width = bitmap.Width;
+            int height = bitmap.Height;
+
+            unsafe
+            {
+                byte* destPtr = (byte*)data.Scan0;
+
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        float minZ = float.MaxValue;
+                        byte r = 0, g = 0, b = 0;
+
+                        for (int i = 0; i < buffers.Length; i++)
+                        {
+                            float z = buffers[i].ZBuffer[x, y];
+                            if (z < minZ)
+                            {
+                                minZ = z;
+                                int index = (y * width + x) * 3;
+                                b = buffers[i].Pixels[index];
+                                g = buffers[i].Pixels[index + 1];
+                                r = buffers[i].Pixels[index + 2];
+                            }
+                        }
+
+                        int destIndex = y * stride + x * 3;
+                        destPtr[destIndex] = b;
+                        destPtr[destIndex + 1] = g;
+                        destPtr[destIndex + 2] = r;
+                    }
                 }
             }
 
-            //ApplyWaveDistortion(bitmap);
-           // ApplyUnderwaterEffect(bitmap);
-            pictureBox1.Image = bitmap;
+            bitmap.UnlockBits(data);
         }
+
+           
 
 
         private void Barycentric(Vector3 v0, Vector3 v1, Vector3 v2, float x, float y, out float a, out float b, out float c)
@@ -283,7 +358,7 @@ namespace lab1.Forms
             bmp.UnlockBits(bmpData);
         }
 
-        public void RasterizeTriangleTexture(Bitmap bmp,
+        public void RasterizeTriangleTexture( RenderBuffer buffer,
             Vector3 v0, Vector3 v1, Vector3 v2,
             Vector3 p0, Vector3 p1, Vector3 p2,
             Vector3 n0, Vector3 n1, Vector3 n2,
@@ -566,4 +641,28 @@ namespace lab1.Forms
             }
         }
     }
+    public class RenderBuffer
+    {
+        public byte[] Pixels;
+        public float[,] ZBuffer;
+
+        public RenderBuffer(int width, int height)
+        {
+            Pixels = new byte[width * height * 3]; // 3 канала: B, G, R
+            ZBuffer = new float[width, height];
+            for (int x = 0; x < width; x++)
+                for (int y = 0; y < height; y++)
+                    ZBuffer[x, y] = float.MaxValue;
+        }
+
+        public void Clear()
+        {
+            Array.Clear(Pixels, 0, Pixels.Length);
+            for (int x = 0; x < ZBuffer.GetLength(0); x++)
+                for (int y = 0; y < ZBuffer.GetLength(1); y++)
+                    ZBuffer[x, y] = float.MaxValue;
+        }
+    }
+
+
 }
