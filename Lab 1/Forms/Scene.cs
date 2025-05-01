@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Lab_1.ParseObject;
+using Lab_1.Structures;
 using lab1.MatrixOperations;
 
 using lab1.Structures;
@@ -33,7 +34,7 @@ namespace lab1.Forms
         private Vector3 up = new Vector3(0, 1, 0);
 
         // 0.0964412242f, -0.870733261f, 0.482206136f, -1.20551527f
-        private Vector3 lightDirection = new Vector3(0.0964412242f, -0.870733261f, 0.482206136f, -1.20551527f).Normalize();
+        private Vector3 lightDirection = new Vector3(1, 1, 1).Normalize();
 
         private const float RotationSpeed = 2f;
         private const float TranslationSpeed = 0.3f;
@@ -103,8 +104,6 @@ namespace lab1.Forms
             movementTimer.Start();
 
             CreateBitmap();
-            //lightDirection = lightDirection * -1;
-
             UpdateScene();
         }
 
@@ -175,12 +174,11 @@ namespace lab1.Forms
             for (int i = 0; i < objects.Count; i++)
             {
                 var obj = objects[i];
-                Vector3 objPosition = new Vector3(obj.translationX, obj.translationY, obj.translationZ);
+                float[,] modelMatrix = obj.GetModelMatrix();
+                float[,] modelMatrixInverseTranspose = MathsOperations.InverseTransposeMatrix(modelMatrix);
 
                 int faceCount = obj.objectModel.faces.Length / 3;
                 var currentVerticies = obj.GetCurrentVertices();
-
-                float[,] modelMatrix = obj.GetModelMatrix();
 
                 resultMatrix = MathsOperations.MultipleMatrix(
                     MathsOperations.MultipleMatrix(
@@ -209,7 +207,8 @@ namespace lab1.Forms
                         Vector3 vWorld = MathsOperations.TransformVertex(obj.objectModel.Vertices[vIndex], modelMatrix);
                         verticesInWorld[k] = vWorld;
 
-                        Vector3 vNormal = MathsOperations.TransformVertex(obj.objectModel.Normals[nIndex % obj.objectModel.Normals.Count], modelMatrix);
+                        Vector3 originalNormal = obj.objectModel.Normals[nIndex % obj.objectModel.Normals.Count];
+                        Vector3 vNormal = MathsOperations.TransformVertex(originalNormal, modelMatrixInverseTranspose);
                         vertexNormals[k] = vNormal.Normalize();
 
                         verticesInView[k] = MathsOperations.TransformVertex(vWorld, observerMatrix);
@@ -240,10 +239,10 @@ namespace lab1.Forms
 
                     RasterizeTriangleTexture(bitmap,
                         verticesInViewport[0], verticesInViewport[1], verticesInViewport[2],
-                        verticesInWorld[0], verticesInWorld[1], verticesInWorld[2], 
-                        vertexNormals[0], vertexNormals[1], vertexNormals[2],     
+                        verticesInWorld[0], verticesInWorld[1], verticesInWorld[2],
+                        vertexNormals[0], vertexNormals[1], vertexNormals[2],
                         uv0, uv1, uv2,
-                        invW[0], invW[1], invW[2], 
+                        invW[0], invW[1], invW[2],
                         obj.diffuseMap, obj.normalMap, obj.specularMap,
                         obj.bmpDataDiffuse, obj.bmpDataNormal, obj.bmpDataSpecular);
                 }
@@ -252,7 +251,8 @@ namespace lab1.Forms
             pictureBox1.Image = bitmap;
         }
 
-        void Barycentric(Vector3 v0, Vector3 v1, Vector3 v2, float x, float y, out float a, out float b, out float c)
+
+        private void Barycentric(Vector3 v0, Vector3 v1, Vector3 v2, float x, float y, out float a, out float b, out float c)
         {
             float denom = (v1.Y - v2.Y) * (v0.X - v2.X) + (v2.X - v1.X) * (v0.Y - v2.Y);
             if (Math.Abs(denom) < 1e-6f) denom = 1e-6f;
@@ -315,7 +315,6 @@ namespace lab1.Forms
                 byte* ptrSpecular = bmpDataSpecular != null ? (byte*)bmpDataSpecular.Scan0 : null;
                 int strideSpecular = bmpDataSpecular != null ? bmpDataSpecular.Stride : 0;
 
-
                 for (int y = yStart; y <= yEnd; y++)
                 {
                     float x1 = InterpolateX(y <= middle.Y ? top : middle, y <= middle.Y ? middle : bottom, y);
@@ -335,11 +334,13 @@ namespace lab1.Forms
                             float invW = α * invW0 + β * invW1 + γ * invW2;
                             float w = 1.0f / invW;
 
-                            float u = (α * uv0.X * invW0 + β * uv1.X * invW1 + γ * uv2.X * invW2) / invW;
-                            float v = (α * uv0.Y * invW0 + β * uv1.Y * invW1 + γ * uv2.Y * invW2) / invW;
+                            float u = (α * uv0.X * invW0 + β * uv1.X * invW1 + γ * uv2.X * invW2) * w;
+                            float v = (α * uv0.Y * invW0 + β * uv1.Y * invW1 + γ * uv2.Y * invW2) * w;
                             Vector2 uv = new Vector2(u, v);
 
                             Vector3 fragPos = (p0 * (α * invW0) + p1 * (β * invW1) + p2 * (γ * invW2)) * w;
+                            Vector3 normal = (n0 * (α * invW0) + n1 * (β * invW1) + n2 * (γ * invW2)) * w;
+                            normal = normal.Normalize();
 
                             Vector3 diffuseColor = new Vector3(200, 200, 200);
                             if (ptrDiffuse != null)
@@ -350,20 +351,40 @@ namespace lab1.Forms
                                 diffuseColor = new Vector3(pixelDiffuse[2], pixelDiffuse[1], pixelDiffuse[0]);
                             }
 
-                            Vector3 mappedNormal;
+                            Vector3 finalNormal;
                             if (ptrNormal != null)
                             {
                                 int texX = Math.Clamp((int)(uv.X * normalMap.Width), 0, normalMap.Width - 1);
                                 int texY = Math.Clamp((int)((1 - uv.Y) * normalMap.Height), 0, normalMap.Height - 1);
                                 byte* pixelNormal = ptrNormal + texY * strideNormal + texX * 3;
-                                mappedNormal = new Vector3(
+
+                                Vector3 tangentNormal = new Vector3(
                                     pixelNormal[2] / 255.0f * 2 - 1,
                                     pixelNormal[1] / 255.0f * 2 - 1,
                                     pixelNormal[0] / 255.0f * 2 - 1).Normalize();
+
+                                Vector3 edge1 = p1 - p0;
+                                Vector3 edge2 = p2 - p0;
+                                Vector2 deltaUV1 = uv1 - uv0;
+                                Vector2 deltaUV2 = uv2 - uv0;
+
+                                float f = 1.0f / (deltaUV1.X * deltaUV2.Y - deltaUV2.X * deltaUV1.Y);
+
+                                Vector3 tangent = (edge1 * deltaUV2.Y - edge2 * deltaUV1.Y) * f;
+                                tangent = tangent.Normalize();
+                                Vector3 bitangent = (edge2 * deltaUV1.X - edge1 * deltaUV2.X) * f;
+                                bitangent = bitangent.Normalize();
+
+                                Matrix3x3 TBN = new Matrix3x3(
+                                    tangent.X, bitangent.X, normal.X,
+                                    tangent.Y, bitangent.Y, normal.Y,
+                                    tangent.Z, bitangent.Z, normal.Z);
+
+                                finalNormal = TBN.Transform(tangentNormal).Normalize();
                             }
                             else
                             {
-                                mappedNormal = (n0 * (α * invW0) + n1 * (β * invW1) + n2 * (γ * invW2) * w).Normalize();
+                                finalNormal = normal;
                             }
 
                             float specularStrength = 0.5f;
@@ -375,15 +396,21 @@ namespace lab1.Forms
                             }
 
                             Vector3 viewDir = (eye - fragPos).Normalize();
-                            Vector3 reflectDir = (mappedNormal * 2 * Vector3.ScalarMultiplication(lightDirection, mappedNormal) - lightDirection).Normalize();
+                            Vector3 lightDir = lightDirection.Normalize();
 
-                            float NdotL = Math.Max(0, Vector3.ScalarMultiplication(mappedNormal, lightDirection));
-                            float specular = (float)Math.Pow(Math.Max(0, Vector3.ScalarMultiplication(viewDir, reflectDir)), 32) * specularStrength;
+                            float NdotL = Math.Max(0, Vector3.ScalarMultiplication(finalNormal, lightDir));
+                            Vector3 diffuse = diffuseColor * NdotL;
+
+                            Vector3 halfwayDir = (lightDir + viewDir).Normalize();
+                            float spec = (float)Math.Pow(Math.Max(0, Vector3.ScalarMultiplication(finalNormal, halfwayDir)), 32) * specularStrength;
+                            Vector3 specular = new Vector3(255, 255, 255) * spec;
+
+                            Vector3 result = diffuse + specular;
 
                             byte* pixel = ptr + y * stride + x * 3;
-                            pixel[0] = (byte)Math.Clamp((diffuseColor.Z * NdotL + 255 * specular), 0, 255);
-                            pixel[1] = (byte)Math.Clamp((diffuseColor.Y * NdotL + 255 * specular), 0, 255);
-                            pixel[2] = (byte)Math.Clamp((diffuseColor.X * NdotL + 255 * specular), 0, 255);
+                            pixel[0] = (byte)Math.Clamp(result.Z, 0, 255);
+                            pixel[1] = (byte)Math.Clamp(result.Y, 0, 255);
+                            pixel[2] = (byte)Math.Clamp(result.X, 0, 255);
                         }
                     }
                 }
@@ -441,11 +468,11 @@ namespace lab1.Forms
                     {
                         case Keys.A: 
                             objects[0].rotationY -= actualRotationSpeed;
-                            objects[1].rotationY -= actualRotationSpeed;
+                            /*objects[1].rotationY -= actualRotationSpeed;
                             objects[2].rotationY -= actualRotationSpeed;
                             objects[3].rotationY -= actualRotationSpeed;
                             objects[4].rotationY -= actualRotationSpeed;
-                            objects[5].rotationY -= actualRotationSpeed; break;
+                            objects[5].rotationY -= actualRotationSpeed;*/ break;
                         case Keys.D: 
                             objects[0].rotationY += actualRotationSpeed;
                             /*objects[1].rotationY += actualRotationSpeed;

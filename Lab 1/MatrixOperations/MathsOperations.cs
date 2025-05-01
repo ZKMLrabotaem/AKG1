@@ -36,19 +36,88 @@ namespace lab1.MatrixOperations
             return new Vector3(result[0], result[1], result[2], result[3]);
         }
 
-        public static Vector3 TransformVertexNoPerspective(Vector3 vertex, float[,] matrix)
+        public static float[,] InverseTransposeMatrix(float[,] matrix)
         {
-            float x = vertex.X;
-            float y = vertex.Y;
-            float z = vertex.Z;
+            if (matrix.GetLength(0) != 4 || matrix.GetLength(1) != 4)
+                throw new ArgumentException("Matrix must be 4x4");
 
-            float w = matrix[0, 3] * x + matrix[1, 3] * y + matrix[2, 3] * z + matrix[3, 3];
+            float[,] inverse = InverseMatrix(matrix);
 
-            return new Vector3(
-                matrix[0, 0] * x + matrix[1, 0] * y + matrix[2, 0] * z + matrix[3, 0],
-                matrix[0, 1] * x + matrix[1, 1] * y + matrix[2, 1] * z + matrix[3, 1],
-                matrix[0, 2] * x + matrix[1, 2] * y + matrix[2, 2] * z + matrix[3, 2]
-            );
+            float[,] inverseTranspose = new float[4, 4];
+            for (int i = 0; i < 4; i++)
+            {
+                for (int j = 0; j < 4; j++)
+                {
+                    inverseTranspose[i, j] = inverse[j, i];
+                }
+            }
+
+            return inverseTranspose;
+        }
+
+        private static float[,] InverseMatrix(float[,] matrix)
+        {
+            float tx = matrix[0, 3];
+            float ty = matrix[1, 3];
+            float tz = matrix[2, 3];
+
+            float[,] upper3x3 = new float[3, 3];
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                {
+                    upper3x3[i, j] = matrix[i, j];
+                }
+            }
+
+            float[,] upper3x3Inv = Inverse3x3Matrix(upper3x3);
+
+            float[,] inverse = new float[4, 4];
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                {
+                    inverse[i, j] = upper3x3Inv[i, j];
+                }
+            }
+
+            inverse[0, 3] = -(upper3x3Inv[0, 0] * tx + upper3x3Inv[0, 1] * ty + upper3x3Inv[0, 2] * tz);
+            inverse[1, 3] = -(upper3x3Inv[1, 0] * tx + upper3x3Inv[1, 1] * ty + upper3x3Inv[1, 2] * tz);
+            inverse[2, 3] = -(upper3x3Inv[2, 0] * tx + upper3x3Inv[2, 1] * ty + upper3x3Inv[2, 2] * tz);
+
+            inverse[3, 0] = 0;
+            inverse[3, 1] = 0;
+            inverse[3, 2] = 0;
+            inverse[3, 3] = 1;
+
+            return inverse;
+        }
+
+        private static float[,] Inverse3x3Matrix(float[,] matrix)
+        {
+            float det = matrix[0, 0] * (matrix[1, 1] * matrix[2, 2] - matrix[1, 2] * matrix[2, 1]) -
+                        matrix[0, 1] * (matrix[1, 0] * matrix[2, 2] - matrix[1, 2] * matrix[2, 0]) +
+                        matrix[0, 2] * (matrix[1, 0] * matrix[2, 1] - matrix[1, 1] * matrix[2, 0]);
+
+            if (Math.Abs(det) < float.Epsilon)
+                throw new InvalidOperationException("Matrix is not invertible");
+
+            float invDet = 1.0f / det;
+
+            float[,] inverse = new float[3, 3];
+            inverse[0, 0] = (matrix[1, 1] * matrix[2, 2] - matrix[1, 2] * matrix[2, 1]) * invDet;
+            inverse[0, 1] = (matrix[0, 2] * matrix[2, 1] - matrix[0, 1] * matrix[2, 2]) * invDet;
+            inverse[0, 2] = (matrix[0, 1] * matrix[1, 2] - matrix[0, 2] * matrix[1, 1]) * invDet;
+
+            inverse[1, 0] = (matrix[1, 2] * matrix[2, 0] - matrix[1, 0] * matrix[2, 2]) * invDet;
+            inverse[1, 1] = (matrix[0, 0] * matrix[2, 2] - matrix[0, 2] * matrix[2, 0]) * invDet;
+            inverse[1, 2] = (matrix[0, 2] * matrix[1, 0] - matrix[0, 0] * matrix[1, 2]) * invDet;
+
+            inverse[2, 0] = (matrix[1, 0] * matrix[2, 1] - matrix[1, 1] * matrix[2, 0]) * invDet;
+            inverse[2, 1] = (matrix[0, 1] * matrix[2, 0] - matrix[0, 0] * matrix[2, 1]) * invDet;
+            inverse[2, 2] = (matrix[0, 0] * matrix[1, 1] - matrix[0, 1] * matrix[1, 0]) * invDet;
+
+            return inverse;
         }
     }
 

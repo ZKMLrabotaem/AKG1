@@ -55,12 +55,7 @@
             return this * (1.0f / length);
         return this;
     }
-    public static Vector3 Normalize(Vector3 v)
-    {
-        return v.Normalize();
-    }
 
-  
     public static Vector3[] Normalize(params Vector3[] vectors)
     {
         Vector3[] normalizedVectors = new Vector3[vectors.Length];
@@ -73,7 +68,6 @@
 
     public static Vector3 Lerp(Vector3 a, Vector3 b, float t)
     {
-        // Ограничим t от 0 до 1 для корректности
         t = Math.Clamp(t, 0f, 1f);
 
         return new Vector3(
@@ -81,27 +75,5 @@
             a.Y + (b.Y - a.Y) * t,
             a.Z + (b.Z - a.Z) * t
         );
-    }
-
-    public static Vector3 operator /(Vector3 a, float b)
-    {
-        return new Vector3(a.X/b, a.Y/b, a.Z/b);
-    }
-
-    public static float Distance(Vector3 a, Vector3 b)
-    {
-        float dx = a.X - b.X;
-        float dy = a.Y - b.Y;
-        float dz = a.Z - b.Z;
-        return (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
-    // Квадрат расстояния для оптимизации (не вычисляет корень)
-    public static float DistanceSquared(Vector3 a, Vector3 b)
-    {
-        float dx = a.X - b.X;
-        float dy = a.Y - b.Y;
-        float dz = a.Z - b.Z;
-        return dx * dx + dy * dy + dz * dz;
     }
 }
