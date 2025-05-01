@@ -7,6 +7,7 @@ using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using System.Windows.Media;
 using Lab_1.ParseObject;
 using Lab_1.Structures;
 using lab1.MatrixOperations;
@@ -29,7 +30,9 @@ namespace lab1.Forms
         private List<BaseObject> objects = new List<BaseObject>();
         public float[,] modelMatrix, observerMatrix, projectionMatrix, viewportMatrix, resultMatrix;
 
-        private Vector3 eye = new Vector3(0, 0, 20);
+        //private Vector3 eye = new Vector3(0, 1, -3);
+        private Vector3 eye = new Vector3(0, 0, 2);
+        //private Vector3 eye = new Vector3(2, 0, 0.5f);
         private Vector3 target = new Vector3(0, 0, 0);
         private Vector3 up = new Vector3(0, 1, 0);
 
@@ -42,8 +45,8 @@ namespace lab1.Forms
         private System.Windows.Forms.Timer movementTimer;
 
         private HashSet<Keys> pressedKeys = new HashSet<Keys>();
-
-        private float[,] zBuffer;
+        private Random random = new Random();
+       private float[,] zBuffer;
         private Bitmap bitmap;
 
         private readonly Vector3[] verticesInViewport = new Vector3[3];
@@ -70,6 +73,7 @@ namespace lab1.Forms
         public Scene()
         {
             InitializeComponent();
+          
             foreach (var path in objectsPaths)
             {
                 switch (path.Key)
@@ -158,8 +162,8 @@ namespace lab1.Forms
         private void CreateBitmap()
         {
             bitmap?.Dispose();
-            bitmap = new Bitmap(pictureBox1.Width, pictureBox1.Height, PixelFormat.Format24bppRgb);
-            zBuffer = new float[pictureBox1.Width, pictureBox1.Height];
+            bitmap = new Bitmap(pictureBox1.Width, pictureBox1.Height+20, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            zBuffer = new float[pictureBox1.Width, pictureBox1.Height+20];
         }
 
         protected void UpdateScene()
@@ -248,6 +252,8 @@ namespace lab1.Forms
                 }
             }
 
+            //ApplyWaveDistortion(bitmap);
+           // ApplyUnderwaterEffect(bitmap);
             pictureBox1.Image = bitmap;
         }
 
@@ -407,10 +413,25 @@ namespace lab1.Forms
 
                             Vector3 result = diffuse + specular;
 
-                            byte* pixel = ptr + y * stride + x * 3;
-                            pixel[0] = (byte)Math.Clamp(result.Z, 0, 255);
-                            pixel[1] = (byte)Math.Clamp(result.Y, 0, 255);
-                            pixel[2] = (byte)Math.Clamp(result.X, 0, 255);
+                            result.X *= 0.5f; 
+                            result.Y *= 0.9f; 
+                            result.Z = Math.Min(255, result.Z * 1f + 30); 
+
+                            int waveAmplitude = 5;
+                            float waveFrequency = 0.05f;
+                          // int distortedX = x + (int)(Math.Sin(y * waveFrequency + deltaTime) * waveAmplitude + deltaTime );
+                            int distortedY = y + (int)(Math.Cos(x * waveFrequency + deltaTime *2) * waveAmplitude + deltaTime * 2);
+
+
+                            if (/*distortedX >= 0 && distortedX < bmp.Width &&*/ distortedY >= 0 && distortedY < (bmp.Height))
+                            {
+                                byte* pixel = ptr + distortedY * stride + x * 3;
+                                pixel[0] = (byte)Math.Clamp(result.Z, 0, 255);
+                                pixel[1] = (byte)Math.Clamp(result.Y, 0, 255);
+                                pixel[2] = (byte)Math.Clamp(result.X, 0, 255);
+                            }
+
+
                         }
                     }
                 }
@@ -440,6 +461,7 @@ namespace lab1.Forms
                 for (int y = 0; y < zBuffer.GetLength(1); y++)
                     zBuffer[x, y] = float.MaxValue;
         }
+    
 
         private void HandleKeyPress(Keys key, bool isControlPressed, float deltaTime)
         {
