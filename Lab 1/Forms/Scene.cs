@@ -562,77 +562,30 @@ namespace lab1.Forms
         }
 
 
-        private void OnMouseMove(object sender, MouseEventArgs e)
-        {
-            int deltaX = e.X - lastMousePosition.X;
-            int deltaY = e.Y - lastMousePosition.Y;
-
-            // Вращение камеры по горизонтали
-            cameraYaw -= deltaX * mouseSensitivity;
-
-            // Вращение камеры по вертикали
-            cameraPitch -= deltaY * mouseSensitivity;
-            cameraPitch = Math.Clamp(cameraPitch, -MathF.PI / 2 + 0.1f, MathF.PI / 2 - 0.1f);
-
-            // Обновляем направление персонажа
-            playerForward = new Vector3(MathF.Sin(cameraYaw), 0f, MathF.Cos(cameraYaw)).Normalize();
-
-            // Поворачиваем объект вместе с камерой
-            if (objects.Count > 0)
-            {
-                objects[0].rotationY = cameraYaw;
-                UpdateObjectMatrices(); // Добавляем вызов обновления матриц
-            }
-
-            UpdateCameraPosition();
-
-            lastMousePosition = new Point(Width / 2, Height / 2);
-            Cursor.Position = PointToScreen(lastMousePosition);
-        }
-
-        // Новый метод для обновления матриц объекта
-        private void UpdateObjectMatrices()
-        {
-            if (objects.Count == 0) return;
-
-            var obj = objects[0];
-
-            // Порядок важен! Сначала поворот, потом перемещение
-            obj.rotateYMatrix = Matricies.GetRotateYMatrix(obj.rotationY);
-            obj.rotateXMatrix = Matricies.GetRotateXMatrix(obj.rotationX);
-            obj.rotateZMatrix = Matricies.GetRotateZMatrix(obj.rotationZ);
-            obj.scaleMatrix = Matricies.GetScaleMatrix(obj.scale, obj.scale, obj.scale);
-            obj.translationMatrix = Matricies.GetTranslationMatrix(
-                obj.translationX,
-                obj.translationY,
-                obj.translationZ);
-        }
-
         private void HandleKeyPress(Keys key, bool isControlPressed, float deltaTime)
         {
             float actualMovementSpeed = movementSpeed * deltaTime;
 
-            // Получаем направление камеры (уже нормализовано в UpdateCameraPosition)
+            // Получаем направление взгляда камеры (без вертикальной составляющей)
             Vector3 cameraForward = (target - eye).Normalize();
-            Vector3 cameraRight = Vector3.VectorMultiplication(cameraForward, up).Normalize();
+            cameraForward.Y = 0;
+            cameraForward = cameraForward.Normalize();
 
-            // Движение только по горизонтали
-            Vector3 horizontalForward = new Vector3(cameraForward.X, 0, cameraForward.Z).Normalize();
-            Vector3 horizontalRight = new Vector3(cameraRight.X, 0, cameraRight.Z).Normalize();
+            Vector3 cameraRight = Vector3.VectorMultiplication(up, cameraForward).Normalize();
 
             switch (key)
             {
                 case Keys.W:
-                    MoveObject(horizontalForward * actualMovementSpeed);
+                    MoveObject(cameraForward * actualMovementSpeed);
                     break;
                 case Keys.S:
-                    MoveObject(-horizontalForward * actualMovementSpeed);
+                    MoveObject(-cameraForward * actualMovementSpeed);
                     break;
                 case Keys.A:
-                    MoveObject(-horizontalRight * actualMovementSpeed);
+                    MoveObject(-cameraRight * actualMovementSpeed);
                     break;
                 case Keys.D:
-                    MoveObject(horizontalRight * actualMovementSpeed);
+                    MoveObject(cameraRight * actualMovementSpeed);
                     break;
                 case Keys.Space:
                     MoveObject(up * actualMovementSpeed);
@@ -649,20 +602,44 @@ namespace lab1.Forms
 
             if (objects.Count > 0)
             {
-                float factor = 1 / objects[0].scale;
-                objects[0].translationX += movement.X * factor;
-                objects[0].translationY += movement.Y * factor;
-                objects[0].translationZ += movement.Z * factor;
+                // Обновляем позицию объекта с учетом масштаба
+                objects[0].translationX += movement.X / objects[0].scale;
+                objects[0].translationY += movement.Y / objects[0].scale;
+                objects[0].translationZ += movement.Z / objects[0].scale;
 
-                UpdateObjectMatrices(); // Обновляем матрицы после перемещения
+                UpdateObjectMatrices();
             }
 
             UpdateCameraPosition();
         }
 
+        private void OnMouseMove(object sender, MouseEventArgs e)
+        {
+            int deltaX = e.X - lastMousePosition.X;
+            int deltaY = e.Y - lastMousePosition.Y;
+
+            // Вращение камеры
+            cameraYaw -= deltaX * mouseSensitivity;
+            cameraPitch -= deltaY * mouseSensitivity;
+            cameraPitch = Math.Clamp(cameraPitch, -MathF.PI / 2 + 0.1f, MathF.PI / 2 - 0.1f);
+
+            // Поворачиваем объект вместе с камерой
+            if (objects.Count > 0)
+            {
+                objects[0].rotationY = cameraYaw;
+                UpdateObjectMatrices();
+            }
+
+            UpdateCameraPosition();
+
+            // Фиксация курсора в центре
+            lastMousePosition = new Point(Width / 2, Height / 2);
+            Cursor.Position = PointToScreen(lastMousePosition);
+        }
+
         private void UpdateCameraPosition()
         {
-            // Вычисляем позицию камеры за спиной персонажа
+            // Вычисляем позицию камеры за объектом
             Vector3 cameraOffset = new Vector3(
                 MathF.Cos(cameraPitch) * MathF.Sin(cameraYaw),
                 MathF.Sin(cameraPitch),
@@ -670,10 +647,24 @@ namespace lab1.Forms
             ) * cameraDistance;
 
             eye = playerPosition - cameraOffset;
-            target = playerPosition; // Камера всегда смотрит на персонажа
+            target = playerPosition; // Камера смотрит на объект
+        }
 
-            // Обновляем вектор "вверх" камеры, чтобы она не переворачивалась
-            up = new Vector3(0, 1, 0);
+        private void UpdateObjectMatrices()
+        {
+            if (objects.Count == 0) return;
+
+            var obj = objects[0];
+
+            // Правильный порядок преобразований: масштаб -> поворот -> перемещение
+            obj.scaleMatrix = Matricies.GetScaleMatrix(obj.scale, obj.scale, obj.scale);
+            obj.rotateYMatrix = Matricies.GetRotateYMatrix(obj.rotationY);
+            obj.rotateXMatrix = Matricies.GetRotateXMatrix(obj.rotationX);
+            obj.rotateZMatrix = Matricies.GetRotateZMatrix(obj.rotationZ);
+            obj.translationMatrix = Matricies.GetTranslationMatrix(
+                obj.translationX,
+                obj.translationY,
+                obj.translationZ);
         }
     }
     public class RenderBuffer

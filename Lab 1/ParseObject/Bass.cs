@@ -59,6 +59,23 @@ namespace Lab_1.ParseObject
             SetInitialParams();
         }
 
+        protected override float[,] MultipleModelMatrix()
+        {
+            var rotationMatrix = MathsOperations.MultipleMatrix(
+                                MathsOperations.MultipleMatrix(
+                                    rotateZMatrix,
+                                    rotateYMatrix),
+                                rotateXMatrix);
+
+            return MathsOperations.MultipleMatrix(
+                        MathsOperations.MultipleMatrix(
+                            scaleMatrix,
+                            translationMatrix),
+                        rotationMatrix);
+        }
+
+        // rotationMatrix  scaleMatrix  translationMatrix
+
         private void SetCurrentVertices()
         {
             float tailThreshold = minZ + (objectModel.Vertices.Max(v => v.Z) - minZ) * 1f;

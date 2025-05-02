@@ -51,7 +51,7 @@ namespace Lab_1.ParseObject
             modelMatrix = MultipleModelMatrix();
         }
 
-        protected float[,] MultipleModelMatrix()
+        protected virtual float[,] MultipleModelMatrix()
         {
             return MathsOperations.MultipleMatrix(
                         MathsOperations.MultipleMatrix(
