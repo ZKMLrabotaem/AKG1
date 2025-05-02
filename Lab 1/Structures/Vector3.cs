@@ -2,6 +2,8 @@
 {
     public float X, Y, Z, W;
 
+    public static Vector3 UnitZ { get; internal set; }
+
     public Vector3(float x, float y, float z, float w = 1f)
     {
         X = x;
