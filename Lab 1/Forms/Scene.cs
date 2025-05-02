@@ -139,29 +139,6 @@ namespace lab1.Forms
             UpdateScene();
         }
 
-        private void OnMouseMove(object sender, MouseEventArgs e)
-        {
-            int deltaX = e.X - lastMousePosition.X;
-            int deltaY = e.Y - lastMousePosition.Y;
-
-            // Вращение камеры по горизонтали (влево/вправо)
-            cameraYaw -= deltaX * mouseSensitivity;
-
-            // Вращение камеры по вертикали (вверх/вниз)
-            cameraPitch -= deltaY * mouseSensitivity;
-            cameraPitch = Math.Clamp(cameraPitch, -MathF.PI / 2 + 0.1f, MathF.PI / 2 - 0.1f);
-
-            // Обновляем направление персонажа (только по Yaw)
-            playerForward = new Vector3(MathF.Sin(cameraYaw), 0f, MathF.Cos(cameraYaw)).Normalize();
-
-            // Обновляем позицию камеры (вращение вокруг персонажа)
-            UpdateCameraPosition();
-
-            // Фиксируем курсор в центре
-            lastMousePosition = new Point(this.Width / 2, this.Height / 2);
-            Cursor.Position = PointToScreen(lastMousePosition);
-        }
-
         private void Scene_KeyDown(object sender, KeyEventArgs e)
         {
             pressedKeys.Add(e.KeyCode);
@@ -585,103 +562,101 @@ namespace lab1.Forms
         }
 
 
+        private void OnMouseMove(object sender, MouseEventArgs e)
+        {
+            int deltaX = e.X - lastMousePosition.X;
+            int deltaY = e.Y - lastMousePosition.Y;
+
+            // Вращение камеры по горизонтали
+            cameraYaw -= deltaX * mouseSensitivity;
+
+            // Вращение камеры по вертикали
+            cameraPitch -= deltaY * mouseSensitivity;
+            cameraPitch = Math.Clamp(cameraPitch, -MathF.PI / 2 + 0.1f, MathF.PI / 2 - 0.1f);
+
+            // Обновляем направление персонажа
+            playerForward = new Vector3(MathF.Sin(cameraYaw), 0f, MathF.Cos(cameraYaw)).Normalize();
+
+            // Поворачиваем объект вместе с камерой
+            if (objects.Count > 0)
+            {
+                objects[0].rotationY = cameraYaw;
+                UpdateObjectMatrices(); // Добавляем вызов обновления матриц
+            }
+
+            UpdateCameraPosition();
+
+            lastMousePosition = new Point(Width / 2, Height / 2);
+            Cursor.Position = PointToScreen(lastMousePosition);
+        }
+
+        // Новый метод для обновления матриц объекта
+        private void UpdateObjectMatrices()
+        {
+            if (objects.Count == 0) return;
+
+            var obj = objects[0];
+
+            // Порядок важен! Сначала поворот, потом перемещение
+            obj.rotateYMatrix = Matricies.GetRotateYMatrix(obj.rotationY);
+            obj.rotateXMatrix = Matricies.GetRotateXMatrix(obj.rotationX);
+            obj.rotateZMatrix = Matricies.GetRotateZMatrix(obj.rotationZ);
+            obj.scaleMatrix = Matricies.GetScaleMatrix(obj.scale, obj.scale, obj.scale);
+            obj.translationMatrix = Matricies.GetTranslationMatrix(
+                obj.translationX,
+                obj.translationY,
+                obj.translationZ);
+        }
+
         private void HandleKeyPress(Keys key, bool isControlPressed, float deltaTime)
         {
             float actualMovementSpeed = movementSpeed * deltaTime;
-            float actualRotationSpeed = RotationSpeed * deltaTime;
 
-            // Векторы направления камеры (в мировых координатах)
+            // Получаем направление камеры (уже нормализовано в UpdateCameraPosition)
             Vector3 cameraForward = (target - eye).Normalize();
             Vector3 cameraRight = Vector3.VectorMultiplication(cameraForward, up).Normalize();
-            Vector3 cameraUp = Vector3.VectorMultiplication(cameraRight, cameraForward).Normalize();
 
-            // Коэффициент для синхронизации скорости объекта и камеры
-            float objectMovementFactor = 1 / objects[0].scale;
+            // Движение только по горизонтали
+            Vector3 horizontalForward = new Vector3(cameraForward.X, 0, cameraForward.Z).Normalize();
+            Vector3 horizontalRight = new Vector3(cameraRight.X, 0, cameraRight.Z).Normalize();
 
-            // Управление камерой и объектом
             switch (key)
             {
-                // Движение вперед/назад (относительно камеры)
                 case Keys.W:
-                    {
-                        Vector3 move = new Vector3(cameraForward.X, 0, cameraForward.Z).Normalize() * actualMovementSpeed;
-                        playerPosition += move; // Двигаем персонажа, а не камеру напрямую
-                        if (objects.Count > 0)
-                        {
-                            objects[0].translationX += move.X * objectMovementFactor;
-                            objects[0].translationZ += move.Z * objectMovementFactor;
-                        }
-                        break;
-                    }
+                    MoveObject(horizontalForward * actualMovementSpeed);
+                    break;
                 case Keys.S:
-                    {
-                        Vector3 move = new Vector3(cameraForward.X, 0, cameraForward.Z).Normalize() * actualMovementSpeed;
-                        playerPosition -= move;
-                        if (objects.Count > 0)
-                        {
-                            objects[0].translationX -= move.X * objectMovementFactor;
-                            objects[0].translationZ -= move.Z * objectMovementFactor;
-                        }
-                        break;
-                    }
-
-                // Движение влево/вправо (относительно камеры)
+                    MoveObject(-horizontalForward * actualMovementSpeed);
+                    break;
                 case Keys.A:
-                    {
-                        Vector3 move = new Vector3(cameraRight.X, 0, cameraRight.Z).Normalize() * actualMovementSpeed;
-                        playerPosition -= move;
-                        if (objects.Count > 0)
-                        {
-                            objects[0].translationX -= move.X * objectMovementFactor;
-                            objects[0].translationZ -= move.Z * objectMovementFactor;
-                        }
-                        break;
-                    }
+                    MoveObject(-horizontalRight * actualMovementSpeed);
+                    break;
                 case Keys.D:
-                    {
-                        Vector3 move = new Vector3(cameraRight.X, 0, cameraRight.Z).Normalize() * actualMovementSpeed;
-                        playerPosition += move;
-                        if (objects.Count > 0)
-                        {
-                            objects[0].translationX += move.X * objectMovementFactor;
-                            objects[0].translationZ += move.Z * objectMovementFactor;
-                        }
-                        break;
-                    }
-
-                // Движение вверх/вниз (в мировых координатах)
+                    MoveObject(horizontalRight * actualMovementSpeed);
+                    break;
                 case Keys.Space:
-                    {
-                        Vector3 move = up * actualMovementSpeed;
-                        playerPosition += move;
-                        if (objects.Count > 0)
-                            objects[0].translationY += move.Y * objectMovementFactor;
-                        break;
-                    }
+                    MoveObject(up * actualMovementSpeed);
+                    break;
                 case Keys.C:
-                    {
-                        Vector3 move = up * actualMovementSpeed;
-                        playerPosition -= move;
-                        if (objects.Count > 0)
-                            objects[0].translationY -= move.Y * objectMovementFactor;
-                        break;
-                    }
+                    MoveObject(-up * actualMovementSpeed);
+                    break;
             }
+        }
 
-            // Обновляем матрицы объекта
+        private void MoveObject(Vector3 movement)
+        {
+            playerPosition += movement;
+
             if (objects.Count > 0)
             {
-                objects[0].rotateYMatrix = Matricies.GetRotateYMatrix(objects[0].rotationY);
-                objects[0].rotateXMatrix = Matricies.GetRotateXMatrix(objects[0].rotationX);
-                objects[0].rotateZMatrix = Matricies.GetRotateZMatrix(objects[0].rotationZ);
-                objects[0].scaleMatrix = Matricies.GetScaleMatrix(objects[0].scale, objects[0].scale, objects[0].scale);
-                objects[0].translationMatrix = Matricies.GetTranslationMatrix(
-                    objects[0].translationX,
-                    objects[0].translationY,
-                    objects[0].translationZ);
+                float factor = 1 / objects[0].scale;
+                objects[0].translationX += movement.X * factor;
+                objects[0].translationY += movement.Y * factor;
+                objects[0].translationZ += movement.Z * factor;
+
+                UpdateObjectMatrices(); // Обновляем матрицы после перемещения
             }
 
-            // Обновляем позицию камеры после движения персонажа
             UpdateCameraPosition();
         }
 
@@ -695,7 +670,10 @@ namespace lab1.Forms
             ) * cameraDistance;
 
             eye = playerPosition - cameraOffset;
-            target = playerPosition; // Камера смотрит на персонажа
+            target = playerPosition; // Камера всегда смотрит на персонажа
+
+            // Обновляем вектор "вверх" камеры, чтобы она не переворачивалась
+            up = new Vector3(0, 1, 0);
         }
     }
     public class RenderBuffer
