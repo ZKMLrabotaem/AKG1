@@ -67,16 +67,13 @@ namespace lab1.Forms
 
         private float mouseSensitivity = 0.002f;
         private float movementSpeed = 5f;
-        private float cameraPitch = 0f; // Угол наклона камеры вверх/вниз
-        private float cameraYaw = 0f;   // Угол поворота камеры влево/вправо
+        private float cameraPitch = 0f; 
+        private float cameraYaw = 0f;   
 
-        private Vector3 playerPosition = Vector3.Zero(); // Примерная позиция
-        private Vector3 playerForward = Vector3.UnitZ; // Начальное направление (вперёд)
+        private Vector3 playerPosition = Vector3.Zero(); 
 
-        // Расстояние от камеры до объекта (третье лицо)
         private float cameraDistance = 5f;
 
-        private bool isMouseCaptured = false;
         private Point lastMousePosition;
 
         public enum LightingMode
@@ -566,20 +563,18 @@ namespace lab1.Forms
         {
             float actualMovementSpeed = movementSpeed * deltaTime;
 
-            // Получаем направление взгляда камеры (без вертикальной составляющей)
-            Vector3 cameraForward = (target - eye).Normalize();
-            cameraForward.Y = 0;
-            cameraForward = cameraForward.Normalize();
+            Vector3 cameraFullForward = (target - eye).Normalize();
 
-            Vector3 cameraRight = Vector3.VectorMultiplication(up, cameraForward).Normalize();
+            Vector3 cameraHorizontalForward = new Vector3(cameraFullForward.X, 0, cameraFullForward.Z).Normalize();
+            Vector3 cameraRight = Vector3.VectorMultiplication(up, cameraHorizontalForward).Normalize();
 
             switch (key)
             {
                 case Keys.W:
-                    MoveObject(cameraForward * actualMovementSpeed);
+                    MoveObject(cameraFullForward * actualMovementSpeed);
                     break;
                 case Keys.S:
-                    MoveObject(-cameraForward * actualMovementSpeed);
+                    MoveObject(-cameraFullForward * actualMovementSpeed);
                     break;
                 case Keys.A:
                     MoveObject(-cameraRight * actualMovementSpeed);
@@ -602,7 +597,6 @@ namespace lab1.Forms
 
             if (objects.Count > 0)
             {
-                // Обновляем позицию объекта с учетом масштаба
                 objects[0].translationX += movement.X / objects[0].scale;
                 objects[0].translationY += movement.Y / objects[0].scale;
                 objects[0].translationZ += movement.Z / objects[0].scale;
@@ -618,28 +612,25 @@ namespace lab1.Forms
             int deltaX = e.X - lastMousePosition.X;
             int deltaY = e.Y - lastMousePosition.Y;
 
-            // Вращение камеры
             cameraYaw -= deltaX * mouseSensitivity;
             cameraPitch -= deltaY * mouseSensitivity;
             cameraPitch = Math.Clamp(cameraPitch, -MathF.PI / 2 + 0.1f, MathF.PI / 2 - 0.1f);
 
-            // Поворачиваем объект вместе с камерой
             if (objects.Count > 0)
             {
-                objects[0].rotationY = cameraYaw;
+                objects[0].rotationY = cameraYaw;  
+                objects[0].rotationX = -cameraPitch; 
                 UpdateObjectMatrices();
             }
 
             UpdateCameraPosition();
 
-            // Фиксация курсора в центре
             lastMousePosition = new Point(Width / 2, Height / 2);
             Cursor.Position = PointToScreen(lastMousePosition);
         }
 
         private void UpdateCameraPosition()
         {
-            // Вычисляем позицию камеры за объектом
             Vector3 cameraOffset = new Vector3(
                 MathF.Cos(cameraPitch) * MathF.Sin(cameraYaw),
                 MathF.Sin(cameraPitch),
@@ -647,7 +638,7 @@ namespace lab1.Forms
             ) * cameraDistance;
 
             eye = playerPosition - cameraOffset;
-            target = playerPosition; // Камера смотрит на объект
+            target = playerPosition; 
         }
 
         private void UpdateObjectMatrices()
@@ -656,7 +647,6 @@ namespace lab1.Forms
 
             var obj = objects[0];
 
-            // Правильный порядок преобразований: масштаб -> поворот -> перемещение
             obj.scaleMatrix = Matricies.GetScaleMatrix(obj.scale, obj.scale, obj.scale);
             obj.rotateYMatrix = Matricies.GetRotateYMatrix(obj.rotationY);
             obj.rotateXMatrix = Matricies.GetRotateXMatrix(obj.rotationX);
