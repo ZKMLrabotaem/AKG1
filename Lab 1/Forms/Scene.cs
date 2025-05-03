@@ -18,6 +18,7 @@ namespace lab1.Forms
 {
     public partial class Scene : Form
     {
+        private string backgroundImage = "Objects\\backgrount_color.jpg";
         private Dictionary<string, string> objectsPaths = new Dictionary<string, string>
         {
             { "bass", "Objects\\bass_object.obj" },
@@ -60,6 +61,12 @@ namespace lab1.Forms
         private float deltaTime = 0;
 
         private float nearPlaneDistance = 1.0f;
+
+        private readonly float minX = -7.3f;
+        private readonly float maxX = 7.3f;
+        private readonly float minZ = -7.5f;
+        private readonly float maxZ = 7.5f;
+        private readonly float minY = -6.6f;
         struct PixelData
         {
             public byte R, G, B;
@@ -187,8 +194,8 @@ namespace lab1.Forms
         private void CreateBitmap()
         {
             bitmap?.Dispose();
-            bitmap = new Bitmap(pictureBox1.Width, pictureBox1.Height+20, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-            zBuffer = new float[pictureBox1.Width, pictureBox1.Height+20];
+            bitmap = new Bitmap(pictureBox1.Width, pictureBox1.Height+32, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            zBuffer = new float[pictureBox1.Width, pictureBox1.Height+32];
         }
 
         protected void UpdateScene()
@@ -365,18 +372,13 @@ namespace lab1.Forms
 
         private void ClearBitmap(Bitmap bmp)
         {
-            BitmapData bmpData = bmp.LockBits(
-                new Rectangle(0, 0, bmp.Width, bmp.Height),
-                ImageLockMode.WriteOnly,
-                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-
-            unsafe
+            using (Bitmap sourceBmp = new Bitmap(backgroundImage))
             {
-                byte* ptr = (byte*)bmpData.Scan0;
-                int bytes = bmpData.Stride * bmp.Height;
-                for (int i = 0; i < bytes; i++) ptr[i] = 255;
+                using (Graphics g = Graphics.FromImage(bmp))
+                {
+                    g.DrawImage(sourceBmp, 0, 0, bmp.Width, bmp.Height);
+                }
             }
-            bmp.UnlockBits(bmpData);
         }
 
         public void RasterizeTriangleTexture( RenderBuffer buffer,
@@ -577,10 +579,10 @@ namespace lab1.Forms
                     MoveObject(-cameraFullForward * actualMovementSpeed);
                     break;
                 case Keys.A:
-                    MoveObject(-cameraRight * actualMovementSpeed);
+                    MoveObject(cameraRight * actualMovementSpeed);
                     break;
                 case Keys.D:
-                    MoveObject(cameraRight * actualMovementSpeed);
+                    MoveObject(-cameraRight * actualMovementSpeed);
                     break;
                 case Keys.Space:
                     MoveObject(up * actualMovementSpeed);
@@ -588,18 +590,32 @@ namespace lab1.Forms
                 case Keys.C:
                     MoveObject(-up * actualMovementSpeed);
                     break;
+                case Keys.Escape:
+                    Application.Exit();
+                    break;
             }
         }
 
         private void MoveObject(Vector3 movement)
         {
-            playerPosition += movement;
+            Vector3 newPosition = playerPosition + movement;
+
+            newPosition.X = Math.Clamp(newPosition.X, minX, maxX);
+            newPosition.Z = Math.Clamp(newPosition.Z, minZ, maxZ);
+
+            newPosition.Y = Math.Max(newPosition.Y, minY);
+
+            playerPosition = newPosition;
 
             if (objects.Count > 0)
             {
                 objects[0].translationX += movement.X / objects[0].scale;
                 objects[0].translationY += movement.Y / objects[0].scale;
                 objects[0].translationZ += movement.Z / objects[0].scale;
+
+                objects[0].translationX = Math.Clamp(objects[0].translationX, minX / objects[0].scale, maxX / objects[0].scale);
+                objects[0].translationZ = Math.Clamp(objects[0].translationZ, minZ / objects[0].scale, maxZ / objects[0].scale);
+                objects[0].translationY = Math.Max(objects[0].translationY, minY / objects[0].scale);
 
                 UpdateObjectMatrices();
             }
@@ -637,8 +653,11 @@ namespace lab1.Forms
                 MathF.Cos(cameraPitch) * MathF.Cos(cameraYaw)
             ) * cameraDistance;
 
-            eye = playerPosition - cameraOffset;
-            target = playerPosition; 
+            float cameraHeightOffset = 0.8f;
+            Vector3 elevatedTarget = playerPosition + new Vector3(0, cameraHeightOffset, 0);
+
+            eye = elevatedTarget - cameraOffset;
+            target = elevatedTarget;
         }
 
         private void UpdateObjectMatrices()
@@ -664,7 +683,7 @@ namespace lab1.Forms
 
         public RenderBuffer(int width, int height)
         {
-            Pixels = new byte[width * height * 3]; // 3 канала: B, G, R
+            Pixels = new byte[width * height * 3]; 
             ZBuffer = new float[width, height];
             for (int x = 0; x < width; x++)
                 for (int y = 0; y < height; y++)

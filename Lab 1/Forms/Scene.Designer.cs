@@ -31,11 +31,13 @@
             pictureBox1 = new PictureBox();
             label1 = new Label();
             ((System.ComponentModel.ISupportInitialize)pictureBox1).BeginInit();
+            pictureBox1.SuspendLayout();
             SuspendLayout();
             // 
             // pictureBox1
             // 
             pictureBox1.BackColor = SystemColors.ButtonHighlight;
+            pictureBox1.Controls.Add(label1);
             pictureBox1.Dock = DockStyle.Fill;
             pictureBox1.Location = new Point(0, 0);
             pictureBox1.Name = "pictureBox1";
@@ -46,30 +48,31 @@
             // label1
             // 
             label1.AutoSize = true;
+            label1.BackColor = Color.Transparent;
+            label1.Font = new Font("Times New Roman", 14F, FontStyle.Bold);
+            label1.ForeColor = Color.White;
             label1.Location = new Point(28, 25);
             label1.Name = "label1";
-            label1.Font = new Font("Times New Roman", 14);
-            label1.BackColor = Color.White;
-            label1.Size = new Size(38, 15);
+            label1.Size = new Size(59, 22);
             label1.TabIndex = 1;
-            label1.Text = "label1";
+            label1.Text = "FPS: 60";
             // 
             // Scene
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            BackColor = SystemColors.ButtonFace;
             ClientSize = new Size(1615, 1061);
-            Controls.Add(label1);
             Controls.Add(pictureBox1);
             DoubleBuffered = true;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.None;
             KeyPreview = true;
             Name = "Scene";
             Text = "Scene";
+            WindowState = FormWindowState.Maximized;
             ((System.ComponentModel.ISupportInitialize)pictureBox1).EndInit();
+            pictureBox1.ResumeLayout(false);
+            pictureBox1.PerformLayout();
             ResumeLayout(false);
-            PerformLayout();
         }
 
         #endregion
