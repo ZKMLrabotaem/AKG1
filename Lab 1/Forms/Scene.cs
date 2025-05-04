@@ -90,6 +90,15 @@ namespace lab1.Forms
             Texture
         }
 
+        private enum CameraMode
+        {
+            ThirdPerson,
+            FirstPerson,
+            FrontView
+        }
+
+        private CameraMode currentCameraMode = CameraMode.ThirdPerson;
+
         public LightingMode CurrentLightingMode { get; set; } = LightingMode.Texture;
 
         public Scene()
@@ -132,6 +141,7 @@ namespace lab1.Forms
             this.Capture = true; 
 
             this.MouseMove += OnMouseMove;
+            this.KeyDown += OnKeyDown;
 
             Cursor.Hide();
             Cursor.Position = new Point(
@@ -573,10 +583,14 @@ namespace lab1.Forms
             switch (key)
             {
                 case Keys.W:
-                    MoveObject(cameraFullForward * actualMovementSpeed);
+                    MoveObject((currentCameraMode == CameraMode.FrontView
+                        ? -cameraFullForward
+                        : cameraFullForward) * actualMovementSpeed);
                     break;
                 case Keys.S:
-                    MoveObject(-cameraFullForward * actualMovementSpeed);
+                    MoveObject((currentCameraMode == CameraMode.FrontView
+                        ? cameraFullForward
+                        : -cameraFullForward) * actualMovementSpeed);
                     break;
                 case Keys.A:
                     MoveObject(cameraRight * actualMovementSpeed);
@@ -594,6 +608,17 @@ namespace lab1.Forms
                     Application.Exit();
                     break;
             }
+        }
+
+        private void OnKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.V)
+            {
+                currentCameraMode = (CameraMode)(((int)currentCameraMode + 1) % Enum.GetValues(typeof(CameraMode)).Length);
+                UpdateCameraPosition();
+            }
+            if (e.KeyCode == Keys.Escape)
+                Application.Exit();
         }
 
         private void MoveObject(Vector3 movement)
@@ -634,8 +659,11 @@ namespace lab1.Forms
 
             if (objects.Count > 0)
             {
-                objects[0].rotationY = cameraYaw;  
-                objects[0].rotationX = -cameraPitch; 
+                objects[0].rotationY = cameraYaw;
+                objects[0].rotationX =
+                    currentCameraMode == CameraMode.FrontView
+                        ? cameraPitch
+                        : -cameraPitch;
                 UpdateObjectMatrices();
             }
 
@@ -647,17 +675,55 @@ namespace lab1.Forms
 
         private void UpdateCameraPosition()
         {
-            Vector3 cameraOffset = new Vector3(
-                MathF.Cos(cameraPitch) * MathF.Sin(cameraYaw),
-                MathF.Sin(cameraPitch),
-                MathF.Cos(cameraPitch) * MathF.Cos(cameraYaw)
-            ) * cameraDistance;
-
             float cameraHeightOffset = 0.8f;
             Vector3 elevatedTarget = playerPosition + new Vector3(0, cameraHeightOffset, 0);
 
-            eye = elevatedTarget - cameraOffset;
-            target = elevatedTarget;
+            switch (currentCameraMode)
+            {
+                case CameraMode.FirstPerson:
+                    float forwardOffset = 0.8f; 
+
+                    eye = elevatedTarget + new Vector3(
+                        MathF.Cos(cameraPitch) * MathF.Sin(cameraYaw) * forwardOffset,
+                        MathF.Sin(cameraPitch) * forwardOffset,
+                        MathF.Cos(cameraPitch) * MathF.Cos(cameraYaw) * forwardOffset
+                    );
+
+                    target = eye + new Vector3(
+                        MathF.Cos(cameraPitch) * MathF.Sin(cameraYaw),
+                        MathF.Sin(cameraPitch),
+                        MathF.Cos(cameraPitch) * MathF.Cos(cameraYaw)
+                    );
+                    break;
+
+                case CameraMode.FrontView:
+                    float frontDistance = 3.0f;  
+
+                    eye = elevatedTarget + new Vector3(
+                        MathF.Cos(cameraPitch) * MathF.Sin(cameraYaw) * frontDistance,
+                        MathF.Sin(cameraPitch) * frontDistance,
+                        MathF.Cos(cameraPitch) * MathF.Cos(cameraYaw) * frontDistance
+                    );
+
+                    target = eye + new Vector3(
+                        -MathF.Cos(cameraPitch) * MathF.Sin(cameraYaw),
+                        -MathF.Sin(cameraPitch),
+                        -MathF.Cos(cameraPitch) * MathF.Cos(cameraYaw)
+                    );
+                    break;
+
+                case CameraMode.ThirdPerson:
+                default:
+                    Vector3 cameraOffset = new Vector3(
+                        MathF.Cos(cameraPitch) * MathF.Sin(cameraYaw),
+                        MathF.Sin(cameraPitch),
+                        MathF.Cos(cameraPitch) * MathF.Cos(cameraYaw)
+                    ) * cameraDistance;
+
+                    eye = elevatedTarget - cameraOffset;
+                    target = elevatedTarget;
+                    break;
+            }
         }
 
         private void UpdateObjectMatrices()
@@ -668,7 +734,7 @@ namespace lab1.Forms
 
             obj.scaleMatrix = Matricies.GetScaleMatrix(obj.scale, obj.scale, obj.scale);
             obj.rotateYMatrix = Matricies.GetRotateYMatrix(obj.rotationY);
-            obj.rotateXMatrix = Matricies.GetRotateXMatrix(obj.rotationX);
+            obj.rotateXMatrix = Matricies.GetRotateXMatrix(currentCameraMode == CameraMode.FrontView ? -obj.rotationX : obj.rotationX);
             obj.rotateZMatrix = Matricies.GetRotateZMatrix(obj.rotationZ);
             obj.translationMatrix = Matricies.GetTranslationMatrix(
                 obj.translationX,
@@ -698,6 +764,4 @@ namespace lab1.Forms
                     ZBuffer[x, y] = float.MaxValue;
         }
     }
-
-
 }
