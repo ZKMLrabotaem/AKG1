@@ -70,7 +70,8 @@ namespace lab1.Forms
         private readonly float maxX = 7.3f;
         private readonly float minZ = -7.5f;
         private readonly float maxZ = 7.5f;
-        private readonly float minY = -6.6f;
+        private readonly float minTopY = -6.6f; 
+        private readonly float minBottomY = -8.8f;
         struct PixelData
         {
             public byte R, G, B;
@@ -98,7 +99,8 @@ namespace lab1.Forms
         {
             ThirdPerson,
             FirstPerson,
-            FrontView
+            FrontView,
+            FreeLook
         }
 
         private CameraMode currentCameraMode = CameraMode.ThirdPerson;
@@ -631,6 +633,9 @@ namespace lab1.Forms
 
         private void HandleKeyPress(Keys key, bool isControlPressed, float deltaTime)
         {
+            if (currentCameraMode == CameraMode.FreeLook)
+                return;
+
             float actualMovementSpeed = movementSpeed * deltaTime;
 
             Vector3 cameraFullForward = (target - eye).Normalize();
@@ -689,7 +694,9 @@ namespace lab1.Forms
             newPosition.X = Math.Clamp(newPosition.X, minX, maxX);
             newPosition.Z = Math.Clamp(newPosition.Z, minZ, maxZ);
 
-            newPosition.Y = Math.Max(newPosition.Y, minY);
+            float currentMinY = GetDynamicMinY(newPosition.X, newPosition.Z);
+
+            newPosition.Y = Math.Max(newPosition.Y, currentMinY);
 
             playerPosition = newPosition;
 
@@ -701,12 +708,19 @@ namespace lab1.Forms
 
                 objects[0].translationX = Math.Clamp(objects[0].translationX, minX / objects[0].scale, maxX / objects[0].scale);
                 objects[0].translationZ = Math.Clamp(objects[0].translationZ, minZ / objects[0].scale, maxZ / objects[0].scale);
-                objects[0].translationY = Math.Max(objects[0].translationY, minY / objects[0].scale);
+                objects[0].translationY = Math.Max(objects[0].translationY, currentMinY / objects[0].scale);
 
                 UpdateObjectMatrices();
             }
 
             UpdateCameraPosition();
+        }
+
+        private float GetDynamicMinY(float x, float z)
+        {
+            return minTopY +
+                (minBottomY - minTopY) / (minX - maxX) * (x - maxX) +
+                (minBottomY - minTopY) / (minZ - maxZ) * (z - maxZ) + 1f;
         }
 
         private void OnMouseMove(object sender, MouseEventArgs e)
@@ -716,15 +730,14 @@ namespace lab1.Forms
 
             cameraYaw -= deltaX * mouseSensitivity;
             cameraPitch -= deltaY * mouseSensitivity;
-            cameraPitch = Math.Clamp(cameraPitch, -MathF.PI / 2 + 0.1f, MathF.PI / 2 - 0.1f);
+            cameraPitch = Math.Clamp(cameraPitch, -MathF.PI / 2 + 1f, MathF.PI / 2 - 1f);
 
-            if (objects.Count > 0)
+            if (objects.Count > 0 && currentCameraMode != CameraMode.FreeLook)
             {
                 objects[0].rotationY = cameraYaw;
-                objects[0].rotationX =
-                    currentCameraMode == CameraMode.FrontView
-                        ? cameraPitch
-                        : -cameraPitch;
+                objects[0].rotationX = currentCameraMode == CameraMode.FrontView
+                    ? cameraPitch
+                    : -cameraPitch;
                 UpdateObjectMatrices();
             }
 
@@ -771,6 +784,17 @@ namespace lab1.Forms
                         -MathF.Sin(cameraPitch),
                         -MathF.Cos(cameraPitch) * MathF.Cos(cameraYaw)
                     );
+                    break;
+
+                case CameraMode.FreeLook:
+                    Vector3 freeLookOffset = new Vector3(
+                        MathF.Cos(cameraPitch) * MathF.Sin(cameraYaw),
+                        MathF.Sin(cameraPitch),
+                        MathF.Cos(cameraPitch) * MathF.Cos(cameraYaw)
+                    ) * cameraDistance;
+
+                    eye = elevatedTarget - freeLookOffset;
+                    target = elevatedTarget;
                     break;
 
                 case CameraMode.ThirdPerson:
