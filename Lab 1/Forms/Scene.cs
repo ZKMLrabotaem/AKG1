@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
+using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -18,6 +19,9 @@ namespace lab1.Forms
 {
     public partial class Scene : Form
     {
+        private Thread mainTrhead;
+        private bool isRunning = true;
+        private readonly object _keyLock = new object();
         private string backgroundImage = "Objects\\backgrount_color.jpg";
         private Dictionary<string, string> objectsPaths = new Dictionary<string, string>
         {
@@ -131,12 +135,12 @@ namespace lab1.Forms
             }
             this.KeyDown += Scene_KeyDown;
             this.KeyUp += Scene_KeyUp;
-            movementTimer = new System.Windows.Forms.Timer
+            /*movementTimer = new System.Windows.Forms.Timer
             {
                 Interval = 8
             };
             movementTimer.Tick += MovementTimer_Tick;
-            movementTimer.Start();
+            movementTimer.Start();*/
 
             this.Capture = true; 
 
@@ -150,17 +154,71 @@ namespace lab1.Forms
             );
 
             CreateBitmap();
-            UpdateScene();
+            //UpdateScene();
+            mainTrhead = new Thread(threadFunc);
+            mainTrhead.Start();
+        }
+
+        private void threadFunc()
+        {
+            try
+            {
+                while (isRunning)
+                {
+                    DateTime currentFrameTime = DateTime.Now;
+                    deltaTime = (float)(currentFrameTime - lastFrameTime).TotalSeconds;
+                    lastFrameTime = currentFrameTime;
+
+                    if (label1.InvokeRequired)
+                    {
+                        label1.Invoke(new Action(() => {
+                            label1.Text = $"FPS: {Math.Round(1 / deltaTime)}";
+                        }));
+                    }
+                    else
+                    {
+                        label1.Text = $"FPS: {Math.Round(1 / deltaTime)}";
+                    }
+
+                    bool isCtrlPressed;
+                    Keys[] keysToProcess;
+
+                    lock (_keyLock)
+                    {
+                        isCtrlPressed = (Control.ModifierKeys & Keys.Control) == Keys.Control;
+                        keysToProcess = pressedKeys.ToArray();
+                    }
+
+                    foreach (var key in keysToProcess)
+                    {
+                        HandleKeyPress(key, isCtrlPressed, deltaTime);
+                    }
+
+                    UpdateScene();
+
+                    Thread.Sleep(1);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Thread error: {ex.Message}");
+            }
         }
 
         private void Scene_KeyDown(object sender, KeyEventArgs e)
         {
-            pressedKeys.Add(e.KeyCode);
+            lock (_keyLock)
+            {
+                pressedKeys.Add(e.KeyCode);
+            }
         }
 
         private void Scene_KeyUp(object sender, KeyEventArgs e)
         {
-            pressedKeys.Remove(e.KeyCode);
+            lock (_keyLock)
+            {
+                pressedKeys.Remove(e.KeyCode);
+            }
         }
         protected override void OnMouseWheel(MouseEventArgs e)
         {
@@ -618,7 +676,10 @@ namespace lab1.Forms
                 UpdateCameraPosition();
             }
             if (e.KeyCode == Keys.Escape)
+            {
+                isRunning = false;
                 Application.Exit();
+            }
         }
 
         private void MoveObject(Vector3 movement)
